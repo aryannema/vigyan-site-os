@@ -283,7 +283,19 @@ export interface JobOpening {
  * CRM — contact_inquiries + WhatsApp (resource: crm)
  * ──────────────────────────────────────────────────────────────────────────*/
 
-/** public.contact_inquiries — public contact/lead form submissions. Contains PII. */
+/**
+ * public.contact_inquiries — public contact/lead form submissions. Contains PII.
+ *
+ * ⚠ THIS IS THE RAW TABLE. Since 005_contact_pii_masking.sql it is readable only
+ * by callers holding `crm:edit`, `crm:create` or `crm:delete` (and the service
+ * role). A `crm:view`-only caller gets ZERO ROWS from it — not an error, just an
+ * empty result, which is the usual RLS shape and a common source of confusion.
+ *
+ * READ THROUGH {@link ContactInquiryView} / `contact_inquiries_view` INSTEAD.
+ * That is the supported read path for every role, including the ones that would
+ * see identical values here. Use this type for INSERTs (the public contact form)
+ * and for service-role code that legitimately needs raw identifiers.
+ */
 export interface ContactInquiry {
   id: string;
   full_name: string;
@@ -291,6 +303,45 @@ export interface ContactInquiry {
   phone_number: string | null;
   message: string;
   created_at: string | null;
+}
+
+/**
+ * public.contact_inquiries_view — the read path for contact inquiries.
+ *
+ * Same columns as {@link ContactInquiry} plus `pii_masked`, but `email` and
+ * `phone_number` are partially masked unless the caller can act on the inquiry:
+ *
+ *   crm:edit OR crm:create -> raw values,    pii_masked === false
+ *   crm:view only          -> masked values, pii_masked === true
+ *   no crm:view            -> no rows at all
+ *
+ * Against the default capability matrix that means admin, support_human and both
+ * support bots see raw values, while editor and viewer see masked ones.
+ *
+ * Masked forms (see the algorithms in 005_contact_pii_masking.sql):
+ *   email        'anita.sharma@acme-corp.co.in' -> 'a***@acme-corp.co.in'
+ *   phone_number '+91 98765 43210'              -> '+91 XXXXX XXX10'
+ *   a NULL phone_number stays NULL — it is not masked into a placeholder.
+ *
+ * `full_name` and `message` are NOT masked for any role.
+ *
+ * The masking is decided in the database, so `pii_masked` is the authoritative
+ * answer to "may this UI offer a mailto:/tel: link?". Do not re-derive it from
+ * the user's role in application code — that duplicates the rule and will drift.
+ * The strings are already masked on arrival; there is nothing to unmask client
+ * side, and a masked value must never be sent back in an update.
+ */
+export interface ContactInquiryView {
+  id: string;
+  full_name: string;
+  /** Masked (`j***@domain.tld`) unless `pii_masked` is false. */
+  email: string;
+  /** Masked (`+91 XXXXX XXX10`) unless `pii_masked` is false. NULL stays NULL. */
+  phone_number: string | null;
+  message: string;
+  created_at: string | null;
+  /** True when this row's email/phone_number arrived masked. */
+  pii_masked: boolean;
 }
 
 export const CONVERSATION_MODES = ['auto', 'human'] as const;
@@ -454,6 +505,20 @@ export interface Tables {
 }
 
 export type TableName = keyof Tables;
+
+/**
+ * Read-only relations that are views, not tables.
+ *
+ * Separate from {@link Tables} because nothing here is writable: `resources` is
+ * derived live from table comments, and `contact_inquiries_view` is a read path
+ * over contact_inquiries. Writes go to the underlying table.
+ */
+export interface Views {
+  resources: ResourceRow;
+  contact_inquiries_view: ContactInquiryView;
+}
+
+export type ViewName = keyof Views;
 
 /**
  * Which resource key governs which table, mirroring the `resource:<key>` table
