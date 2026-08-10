@@ -1,0 +1,45 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# production
+dist/
+
+# secrets and local config
+# NOTE: database credentials for the local stack live in
+# /etc/vigyan/secret.d/postgres.vigyan_site_os.env, never in this repo.
+.env
+.env.*
+!.env.example
+
+# testing
+coverage/
+
+# misc
+.DS_Store
+*.pem
+.vercel
+*.tsbuildinfo
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# supabase CLI local state (migrations themselves ARE tracked)
+supabase/.branches/
+supabase/.temp/
