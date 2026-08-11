@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState, useTransition } from 'react';
+import { Sparkles, X } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Textarea } from '../../../components/ui/textarea';
 import type { Block } from '@/lib/content/blocks';
@@ -73,6 +74,11 @@ export function AiSidebar({
   const [styleSaving, setStyleSaving] = useState(false);
   const [styleSaved, setStyleSaved] = useState(false);
 
+  // Floating panel, not a fixed layout column — a permanent sidebar column
+  // was eating into the actual writing area. Closed by default so it never
+  // costs any space unless you actually open it.
+  const [panelOpen, setPanelOpen] = useState(false);
+
   useEffect(() => {
     getWritingStyle().then((text) => {
       setStyle(text);
@@ -103,8 +109,37 @@ export function AiSidebar({
     });
   }
 
+  if (!panelOpen) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setPanelOpen(true)}
+        className="fixed bottom-6 right-6 z-40 shadow-lg"
+      >
+        <Sparkles className="mr-1.5 h-4 w-4" />
+        AI &amp; SEO
+      </Button>
+    );
+  }
+
   return (
-    <aside className="flex w-full flex-col gap-5 rounded-lg border border-border bg-muted/30 p-4 lg:w-72">
+    <aside className="fixed bottom-6 right-6 z-40 flex max-h-[80vh] w-[calc(100vw-3rem)] flex-col gap-5 overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl sm:w-96">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          AI &amp; SEO assist
+        </span>
+        <button
+          type="button"
+          onClick={() => setPanelOpen(false)}
+          aria-label="Close"
+          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
       <div>
         <button
           type="button"
