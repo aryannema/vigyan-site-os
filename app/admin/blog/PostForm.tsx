@@ -21,6 +21,14 @@ interface PostFormProps {
   post?: Post;
   action: (state: FormState, formData: FormData) => Promise<FormState>;
   submitLabel: string;
+  /**
+   * Distinct categories already in use, for the Category field's suggestion
+   * list. `posts.category` has no CHECK constraint/enum at the database level
+   * (unlike e.g. job_openings.status) — it is genuinely open text, so this is
+   * a live-queried suggestion list, not a hardcoded dropdown. Typing a value
+   * not in the list is still valid; it just creates a new category.
+   */
+  categories?: string[];
 }
 
 function Field({
@@ -46,7 +54,7 @@ function Field({
   );
 }
 
-export function PostForm({ post, action, submitLabel }: PostFormProps) {
+export function PostForm({ post, action, submitLabel, categories = [] }: PostFormProps) {
   const [state, formAction] = useActionState(action, {} as FormState);
   const body = decodeContentBlocks(post?.content_blocks);
 
@@ -115,8 +123,25 @@ export function PostForm({ post, action, submitLabel }: PostFormProps) {
       </Field>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Category" htmlFor="category" error={errors.category}>
-          <Input id="category" name="category" required defaultValue={post?.category ?? ''} />
+        <Field
+          label="Category"
+          htmlFor="category"
+          hint={categories.length > 0 ? 'Pick an existing one or type a new category.' : undefined}
+          error={errors.category}
+        >
+          <Input
+            id="category"
+            name="category"
+            required
+            list="category-suggestions"
+            defaultValue={post?.category ?? ''}
+            autoComplete="off"
+          />
+          <datalist id="category-suggestions">
+            {categories.map((category) => (
+              <option key={category} value={category} />
+            ))}
+          </datalist>
         </Field>
 
         <Field

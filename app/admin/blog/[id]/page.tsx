@@ -17,7 +17,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
   // A non-uuid id would make Postgres raise 22P02 rather than return no rows.
   if (!UUID.test(id)) notFound();
 
-  const [posts, audit] = await Promise.all([
+  const [posts, audit, categoryRows] = await Promise.all([
     query<Post>(
       `SELECT id, title, slug, category, seo_description, featured_image,
               content_blocks, status, published_at, created_at
@@ -32,6 +32,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
         LIMIT 10`,
       [id],
     ),
+    query<{ category: string }>(`SELECT DISTINCT category FROM public.posts ORDER BY category`),
   ]);
 
   const post = posts[0];
@@ -44,7 +45,12 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
         description={`Created ${post.created_at ? new Date(post.created_at).toISOString().slice(0, 10) : 'unknown'}.`}
       />
 
-      <PostForm post={post} action={updatePost.bind(null, id)} submitLabel="Save changes" />
+      <PostForm
+        post={post}
+        action={updatePost.bind(null, id)}
+        submitLabel="Save changes"
+        categories={categoryRows.map((r) => r.category)}
+      />
 
       <section className="mt-10 max-w-3xl border-t border-border pt-6">
         <h2 className="text-sm font-semibold">Activity</h2>
