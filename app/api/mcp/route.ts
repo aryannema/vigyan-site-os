@@ -309,17 +309,53 @@ async function resolveActor(client: PoolClient, identity: string): Promise<Resol
  * ──────────────────────────────────────────────────────────────────────────*/
 
 /**
- * Run `fn` in one transaction, acting as the resolved actor.
+ * Establishes the acting identity for the current transaction.
  *
- * The identity is established through `auth.set_session_identity()` (006), which
- * is transaction-local, so it is discarded on COMMIT/ROLLBACK and cannot leak
- * onto the next borrower of this pooled connection.
+ * CLOUD/LOCAL DIVERGENCE (2026-08-11): tries `auth.set_session_identity()`
+ * (006) first — the correct, hardened mechanism, present on any database 006
+ * was applied to (local dev). Falls back to a direct
+ * `set_config('request.jwt.claims', ..., true)` only on `42883`
+ * (`undefined_function`), which is what Supabase Cloud raises: the `auth`
+ * schema there is owned by `supabase_auth_admin`, and Cloud projects reject
+ * any attempt to create objects in it (`permission denied for schema auth`),
+ * so 006 was never pushed there.
  *
- * This replaces a direct `set_config('request.jwt.claims', ...)`: that GUC is
- * writable by any session, so as of 006 `auth.uid()` no longer derives the
- * identity from it. The setter is SECURITY DEFINER and owner/service-role only —
- * this route connects as the owner, which is what makes it a trusted caller.
+ * The fallback is NOT the vulnerability 006 closed. That finding was about an
+ * UNTRUSTED `authenticated`-role session (e.g. a browser hitting PostgREST or
+ * supabase-js directly) forging its own identity by calling `set_config`
+ * itself, bypassing RLS. This connection is different in kind: it connects as
+ * the table OWNER via `DATABASE_URL` (already bypasses RLS on every table it
+ * owns — 003 §7 deliberately omits FORCE ROW LEVEL SECURITY), is never
+ * reachable by an end user, and `actorUserId` has already been resolved via
+ * `resolveCallerIdentity()`'s Bearer-token check or a verified Supabase
+ * session — not client-supplied at this point. Confirmed by reading Supabase
+ * Cloud's real `auth.uid()` (owner `supabase_auth_admin`): it reads
+ * `coalesce(request.jwt.claim.sub, request.jwt.claims->>'sub')`, the same GUC
+ * — this is what Supabase's own `auth.uid()` was always going to read, on
+ * both environments.
+ *
+ * If a future feature gives an untrusted, `authenticated`-role session direct
+ * SQL/PostgREST/supabase-js access to this database, 006's protection matters
+ * again for THAT path and needs a Cloud-compatible equivalent then — this
+ * fallback should not be widened beyond this owner-only connection.
  */
+async function setSessionIdentity(client: PoolClient, actorUserId: string): Promise<void> {
+  try {
+    await client.query('select auth.set_session_identity($1::uuid)', [actorUserId]);
+  } catch (error) {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code: unknown }).code)
+        : undefined;
+    if (code !== '42883') throw error;
+    await client.query(
+      `select set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`,
+      [actorUserId],
+    );
+  }
+}
+
+/** Run `fn` in one transaction, acting as the resolved actor. */
 async function withActorTransaction<T>(
   actorUserId: string,
   fn: (client: PoolClient) => Promise<T>,
@@ -327,7 +363,7 @@ async function withActorTransaction<T>(
   const client = await getPool().connect();
   try {
     await client.query('begin');
-    await client.query('select auth.set_session_identity($1::uuid)', [actorUserId]);
+    await setSessionIdentity(client, actorUserId);
     const out = await fn(client);
     await client.query('commit');
     return out;
