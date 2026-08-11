@@ -209,6 +209,7 @@ async function withActor<T>(
   fn: (client: PoolClient, actorId: string | null) => Promise<T>,
 ): Promise<T> {
   const client = await getPool().connect();
+  let rollbackFailed = false;
   try {
     await client.query('BEGIN');
     const actorId = await resolveActor(client);
@@ -219,10 +220,21 @@ async function withActor<T>(
     await client.query('COMMIT');
     return out;
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      // If ROLLBACK itself fails, this connection's transaction state is
+      // unknown/possibly still aborted. Releasing it normally would return a
+      // poisoned client to the pool — the NEXT unrelated request that checks
+      // it out would inherit an already-aborted transaction and see this
+      // same "current transaction is aborted" error for a completely
+      // different reason. Marked below so `finally` destroys it instead.
+      rollbackFailed = true;
+      console.error('[admin/db] ROLLBACK failed after an error; destroying connection:', rollbackError);
+    }
     throw error;
   } finally {
-    client.release();
+    client.release(rollbackFailed);
   }
 }
 

@@ -369,6 +369,7 @@ async function withActorTransaction<T>(
   fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await getPool().connect();
+  let rollbackFailed = false;
   try {
     await client.query('begin');
     await setSessionIdentity(client, actorUserId);
@@ -376,10 +377,19 @@ async function withActorTransaction<T>(
     await client.query('commit');
     return out;
   } catch (err) {
-    await client.query('rollback').catch(() => {});
+    try {
+      await client.query('rollback');
+    } catch (rollbackError) {
+      // See app/admin/lib/db.ts's withActor() for why this must destroy the
+      // connection rather than release it normally: a client whose ROLLBACK
+      // failed may still be mid-transaction, and returning it to the pool
+      // would poison the next unrelated request that checks it out.
+      rollbackFailed = true;
+      console.error('[mcp] rollback failed after an error; destroying connection:', rollbackError);
+    }
     throw err;
   } finally {
-    client.release();
+    client.release(rollbackFailed);
   }
 }
 
