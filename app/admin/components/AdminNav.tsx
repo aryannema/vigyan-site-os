@@ -57,6 +57,10 @@ const NAV: NavSection[] = [
       { label: 'Capabilities', href: '/admin/users/capabilities' },
     ],
   },
+  {
+    section: 'Settings',
+    items: [{ label: 'AI Settings', href: '/admin/ai-settings' }],
+  },
 ];
 
 function isActive(pathname: string, item: NavItem): boolean {
