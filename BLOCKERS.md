@@ -125,7 +125,7 @@ ADMIN_ACTOR=<uuid or email of an auth.users row>
 ```
 
 When it is set, `app/admin/lib/db.ts` opens each transaction with
-`set_config('request.jwt.claims', …, true)` and routes every write through
+`auth.set_session_identity(…)` (006) and routes every write through
 `public.perform_action()` — a genuine capability check plus an audit row,
 atomically. Verified end-to-end against the seeded identities from #6:
 
@@ -136,10 +136,18 @@ atomically. Verified end-to-end against the seeded identities from #6:
   rolls back with it** (the row was verified unchanged afterwards); `/admin/crm`
   shows `s***@example.test` / `+91 XXXXX XXX10` and renders no `mailto:`/`tel:` links.
 
-With `ADMIN_ACTOR` unset every page still works: writes record an audit row
-attributed to `system:admin-ui` with **no capability check**, which is the only
-honest behaviour available with no identity to check against. So this is a
-hardening step, not a prerequisite.
+**With no resolvable actor, every admin WRITE now fails closed.** This used to be
+a "hardening step, not a prerequisite": writes recorded an audit row attributed to
+`system:admin-ui` with *no capability check*. Combined with the missing auth layer
+above, that made every admin Server Action an unauthenticated write endpoint — a
+cookie-less `curl` could rewrite the capability matrix, which was reproduced
+end-to-end. `mutate()` now raises `NoAuthenticatedActorError` before touching any
+data ("No authenticated actor — admin writes are disabled until auth is
+configured…"), surfaced through `toFormError()` in the forms.
+
+Reads are unaffected. So until the auth layer resolves a session user, the admin
+UI is read-only unless `ADMIN_ACTOR` is set — which is now a prerequisite for
+writing, not an optional hardening step.
 
 ## 4. `.env.local` needs `MCP_SERVICE_ACTOR` for the MCP route's writes to work
 

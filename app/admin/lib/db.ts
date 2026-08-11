@@ -20,18 +20,32 @@ import { Pool, type PoolClient, type QueryResultRow } from 'pg';
  *     as a server-side operation (003 §8.10).
  *
  * ── Acting AS someone ────────────────────────────────────────────────────────
- * Bypassing RLS is not the same as being nobody. When `ADMIN_ACTOR` names an
- * identity, every read and write below runs inside a transaction that sets
- * `request.jwt.claims`, so `auth.uid()` resolves and:
+ * Bypassing RLS is not the same as being nobody. When an actor can be resolved,
+ * every read and write below runs inside a transaction that establishes that
+ * identity through `auth.set_session_identity()` (006), so `auth.uid()` resolves
+ * and:
  *
  *   - writes go through `public.perform_action()` — a real capability check plus
  *     an audit row, atomically (004);
  *   - reads of `contact_inquiries_view` mask PII according to that identity's
  *     capabilities rather than returning zero rows (005).
  *
- * With `ADMIN_ACTOR` unset the UI still works — writes fall back to recording an
- * audit row directly, with no capability check — which is the only thing that can
- * be done honestly before an auth layer exists. See BLOCKERS.md #3.
+ * ── When NOBODY can be resolved ──────────────────────────────────────────────
+ * `mutate()` REFUSES. It does not fall back to writing as a system identity.
+ *
+ * It used to: with `ADMIN_ACTOR` unset — the state this repo ships in — the
+ * write was applied on this RLS-bypassing owner connection and an audit row was
+ * recorded as 'system:admin-ui', with no capability decision anywhere in the
+ * path. Combined with the absence of an auth layer (BLOCKERS.md #3) that made
+ * every admin Server Action reachable by an unauthenticated HTTP request: a
+ * plain `curl` with no cookie and no token could rewrite the capability matrix.
+ * That was verified end-to-end, not theorised.
+ *
+ * "Nobody is signed in" is not a reason to skip the permission check; it is the
+ * strongest possible reason to refuse. So the admin UI's write paths are
+ * non-functional until an auth layer resolves a real actor per request. That is
+ * the correct state, not a regression: reads still work, and every write fails
+ * with a clear, honest message instead of succeeding as an implicit admin.
  */
 
 declare global {
@@ -58,13 +72,37 @@ export function getPool(): Pool {
  * ─────────────────────────────────────────────────────────────────────────*/
 
 /**
+ * Raised when a mutation is attempted with no resolvable actor.
+ *
+ * A distinct type so call sites (and `toFormError()`) can tell "the system is
+ * not configured to authorize anybody" apart from "you are not allowed to do
+ * this" and from a database error.
+ */
+export class NoAuthenticatedActorError extends Error {
+  /** Mirrors the shape of a `pg` error so error handling stays uniform. */
+  readonly code = 'ADMIN_NO_ACTOR';
+
+  constructor() {
+    super(
+      'No authenticated actor — admin writes are disabled until auth is configured. ' +
+        'Every write must be attributable to an identity so it can be capability-checked ' +
+        'and audited; there is no session layer yet, so there is nobody to check. ' +
+        '(For local development, set ADMIN_ACTOR to the uuid or email of an auth.users ' +
+        'identity whose role carries the capabilities the admin UI should have.)',
+    );
+    this.name = 'NoAuthenticatedActorError';
+  }
+}
+
+/**
  * The identity the admin UI acts as.
  *
  * TODO(auth-phase): this comes from an env var only because there is no session
  * to read it from. When GoTrue lands, replace `resolveActor()` with the session
  * user's id — nothing else in this file, and nothing in any page or action,
  * needs to change: the capability check and the audit trail are already wired to
- * whatever this returns.
+ * whatever this returns. Returning `null` is the "nobody" case, and every write
+ * path refuses on it.
  *
  * Accepts a uuid or an `auth.users` email, matching `perform_action()`'s own
  * actor resolution. Mirrors the `MCP_SERVICE_ACTOR` convention the MCP route
@@ -94,9 +132,12 @@ async function resolveActor(client: PoolClient): Promise<string | null> {
 /**
  * Runs `fn` in a transaction, impersonating the configured actor for its duration.
  *
- * `set_config(..., true)` is TRANSACTION-LOCAL. A session-level setting would
- * leak the impersonated identity onto the next borrower of this pooled
- * connection, which is a cross-request authorization bug, not a tidiness issue.
+ * `auth.set_session_identity()` (006) is TRANSACTION-LOCAL. A session-level
+ * setting would leak the impersonated identity onto the next borrower of this
+ * pooled connection, which is a cross-request authorization bug, not a tidiness
+ * issue. It replaces the previous `set_config('request.jwt.claims', ...)` call:
+ * that GUC is writable by any session, so as of 006 `auth.uid()` no longer reads
+ * it and only this owner-only, SECURITY DEFINER setter can establish an identity.
  */
 async function withActor<T>(
   fn: (client: PoolClient, actorId: string | null) => Promise<T>,
@@ -106,10 +147,7 @@ async function withActor<T>(
     await client.query('BEGIN');
     const actorId = await resolveActor(client);
     if (actorId) {
-      await client.query('SELECT set_config($1, $2, true)', [
-        'request.jwt.claims',
-        JSON.stringify({ sub: actorId, role: 'authenticated' }),
-      ]);
+      await client.query('SELECT auth.set_session_identity($1::uuid)', [actorId]);
     }
     const out = await fn(client, actorId);
     await client.query('COMMIT');
@@ -159,7 +197,15 @@ export async function queryAsActor<T extends QueryResultRow>(
  * Writes
  * ─────────────────────────────────────────────────────────────────────────*/
 
-/** Recorded as the actor when no identity is configured. */
+/**
+ * The actor string this module USED to write when no identity was configured.
+ *
+ * Nothing writes it any more — `mutate()` refuses instead. It is kept exported,
+ * and named, for two reasons: any `action_audit_log` row bearing it was produced
+ * by the fail-open path and should be treated as unattributed, and a test asserts
+ * on the constant so the name cannot be quietly reused for a new implicit
+ * identity.
+ */
 export const ANONYMOUS_ADMIN_ACTOR = 'system:admin-ui';
 
 export interface AuditEntry {
@@ -178,22 +224,32 @@ export interface AuditEntry {
  * record can quote real before/after values (including ones only known
  * mid-transaction, such as a generated id).
  *
- * With an actor configured this calls `public.perform_action()`, which is 004's
+ * With an actor resolved this calls `public.perform_action()`, which is 004's
  * whole point: the capability decision and the audit row are one operation, so a
  * caller cannot obtain the former without producing the latter. It is called
  * AFTER the data change but inside the same transaction — on denial it raises
  * `insufficient_privilege` and the data change rolls back with it.
  *
- * Without an actor there is nobody to check a capability against, so it degrades
- * to writing the audit row directly. That keeps the trail complete and honest
- * about who acted (`system:admin-ui`), and is the only defensible behaviour
- * before an auth layer exists — the alternative would be inventing a user id,
- * i.e. faking the identity the check exists to verify.
+ * WITHOUT an actor there is nobody to check a capability against, so this
+ * FAILS CLOSED: it throws `NoAuthenticatedActorError` BEFORE `fn` runs, so no
+ * data is touched and no audit row is written. It does not degrade to an
+ * unchecked write under a system identity — that is the fail-open behaviour this
+ * replaces, and it made every admin Server Action an unauthenticated write
+ * endpoint. See the module header.
+ *
+ * The refusal happens inside the transaction, which is then rolled back, so
+ * there is no partial state and no successful-looking no-op: callers that wrap
+ * this in `try/catch` surface `toFormError()`'s message, and callers that do not
+ * propagate a real error rather than reporting success.
  */
 export async function mutate<T>(
   fn: (client: PoolClient) => Promise<{ result: T; audit: AuditEntry }>,
 ): Promise<T> {
   return withActor(async (client, actorId) => {
+    // Checked FIRST: an unauthorized mutation must not be executed and then
+    // rolled back, it must never run. `fn` may have effects of its own.
+    if (!actorId) throw new NoAuthenticatedActorError();
+
     const { result, audit } = await fn(client);
 
     const payload = JSON.stringify({
@@ -201,28 +257,13 @@ export async function mutate<T>(
       after: audit.after ?? null,
     });
 
-    if (actorId) {
-      await client.query('SELECT public.perform_action($1, $2, $3, $4, $5::jsonb)', [
-        actorId,
-        audit.resourceKey,
-        audit.action,
-        audit.targetId ?? null,
-        payload,
-      ]);
-    } else {
-      await client.query(
-        `INSERT INTO public.action_audit_log
-           (actor, resource_key, action, target_id, before_data, after_data)
-         VALUES ($1, $2, $3, $4, ($5::jsonb)->'before', ($5::jsonb)->'after')`,
-        [
-          ANONYMOUS_ADMIN_ACTOR,
-          audit.resourceKey,
-          audit.action,
-          audit.targetId ?? null,
-          payload,
-        ],
-      );
-    }
+    await client.query('SELECT public.perform_action($1, $2, $3, $4, $5::jsonb)', [
+      actorId,
+      audit.resourceKey,
+      audit.action,
+      audit.targetId ?? null,
+      payload,
+    ]);
 
     return result;
   });
@@ -243,6 +284,11 @@ const PG_MESSAGES: Record<string, string> = {
 
 /** Turns an unknown thrown value into a message safe to render in a form. */
 export function toFormError(error: unknown): string {
+  // No identity to authorize against. Surfaced verbatim: it says what is wrong
+  // and what has to happen before the UI can write, which is exactly what an
+  // operator hitting this needs to read.
+  if (error instanceof NoAuthenticatedActorError) return error.message;
+
   const code =
     typeof error === 'object' && error !== null && 'code' in error
       ? String((error as { code: unknown }).code)

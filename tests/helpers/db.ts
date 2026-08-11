@@ -22,15 +22,18 @@
  *
  * ── Identity ────────────────────────────────────────────────────────────────
  * There is no GoTrue in this phase. `supabase/migrations/000_local_auth_stub.sql`
- * provides `auth.local_login(uuid)`, which stuffs a fake JWT claims blob into the
- * `request.jwt.claims` GUC so `auth.uid()` resolves. Two things about it matter
- * for tests and are handled here:
+ * provides `auth.local_login(uuid)`, which establishes a fake authenticated
+ * session so `auth.uid()` resolves. Two things about it matter for tests and are
+ * handled here:
  *
  *   * it is owner-only (`REVOKE ALL ... FROM PUBLIC`), so it must be called
  *     BEFORE switching to the `authenticated` role, not after;
- *   * it uses `set_config(..., is_local => false)`, i.e. the claims are SESSION
- *     scoped and DO NOT unwind on `ROLLBACK`. `logout()` is therefore called
- *     explicitly during teardown rather than being left to the transaction.
+ *   * since 006 the identity lives in `auth.session_identity` (a table no
+ *     session can write) rather than in the `request.jwt.claims` GUC, and is
+ *     scoped to the TRANSACTION that established it. A login therefore unwinds
+ *     with a `ROLLBACK` — including a `ROLLBACK TO SAVEPOINT` — so every test
+ *     logs in for itself. `logout()` is still called explicitly during teardown,
+ *     which is also what clears an identity established outside a transaction.
  *
  * ── Why the role switch matters ─────────────────────────────────────────────
  * `DATABASE_URL` connects as `vigyan_site_os`, which OWNS every table. A table
@@ -179,7 +182,7 @@ export class TestDb {
     await this.client.query('SET LOCAL ROLE authenticated');
   }
 
-  /** Clear the (session-scoped, rollback-surviving) JWT claims. */
+  /** Drop the session identity established by `loginAs()` (006). */
   async logout(): Promise<void> {
     await this.client.query('RESET ROLE');
     await this.client.query('SELECT auth.local_logout()');
@@ -283,8 +286,9 @@ export class TestDb {
     if (!this.open) return { users: 0, roles: 0, inquiries: 0, audits: 0 };
     await this.client.query('ROLLBACK');
     this.open = false;
-    // The JWT claims GUC is session scoped (is_local => false in 000), so the
-    // rollback above does NOT clear it. Do it explicitly.
+    // The rollback already unwinds any identity established inside the
+    // transaction (006). Cleared explicitly anyway: this is teardown, and the
+    // connection must not be handed back holding one.
     await this.logout();
 
     const userIds = this.fixtureUserIds;

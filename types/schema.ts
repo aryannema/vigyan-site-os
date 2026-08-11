@@ -123,15 +123,29 @@ export interface ResourceRow {
   resource_key: string;
 }
 
-/** Return shape of public.perform_action(). Denials throw rather than return. */
+/**
+ * Return shape of public.perform_action(). Denials throw rather than return.
+ *
+ * `actor` is the RESOLVED identity (an auth.users uuid as text), not the string
+ * that was passed in — 008 canonicalises it so that "everything actor X did" is
+ * a single equality predicate over action_audit_log. What the caller supplied is
+ * echoed back in `actor_claim` and stored in the same column on the audit row.
+ *
+ * `payload_discarded` is true when a payload was passed with `action: 'view'`.
+ * A view mutates nothing, so it never records before/after state (008 rule A);
+ * the flag says the payload was dropped rather than letting a caller believe a
+ * state claim was recorded.
+ */
 export interface PerformActionReceipt {
   ok: true;
   audit_id: string;
   actor: string;
+  actor_claim: string;
   actor_user_id: string;
   resource_key: string;
   action: Action;
   target_id: string | null;
+  payload_discarded: boolean;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -410,11 +424,20 @@ export interface UserEntitlement {
  * public.action_audit_log — the audit trail for every governed write.
  *
  * Rows are produced by perform_action(), which checks the capability and writes
- * the record as one operation. Append-only: no role has INSERT/UPDATE/DELETE.
+ * the record as one operation, and by the audit-by-construction triggers on
+ * posts / job_openings (007), which derive their rows from the data itself and
+ * so cannot be shaped by a caller. Append-only: no role has INSERT/UPDATE/DELETE.
+ *
+ * `actor` is always the resolved identity: an auth.users uuid, or
+ * `system:<database role>` for a change a trigger observed with no session
+ * identity. `actor_claim` holds the identity string a perform_action() caller
+ * supplied (uuid, braced uuid, or email, verbatim) and is NULL for trigger rows.
+ * Attribute by `actor`; `actor_claim` is evidence of what was asserted.
  */
 export interface ActionAuditLog {
   id: string;
   actor: string;
+  actor_claim: string | null;
   resource_key: string;
   action: string;
   target_id: string | null;

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { AdminNav } from './components/AdminNav';
+import { LogoutButton } from './LogoutButton';
 
 export const metadata: Metadata = {
   title: 'Admin',
@@ -8,26 +9,26 @@ export const metadata: Metadata = {
 };
 
 /**
- * ⚠ THIS ROUTE GROUP IS CURRENTLY UNAUTHENTICATED.
+ * ⚠ THIS ROUTE GROUP IS SESSION-GATED, NOT YET CAPABILITY-GATED.
  *
- * No GoTrue/auth backend is wired up in this phase, so there is deliberately no
- * middleware, no session lookup and no login stub here — a fake auth layer would
- * be worse than an obviously absent one, because it looks like protection.
+ * Step 1 of the plan below is now done: `middleware.ts` at the repo root matches
+ * `/admin/:path*`, resolves the GoTrue session and bounces unauthenticated
+ * requests to `/login`. Whether the signed-in person is ALLOWED here (the
+ * `public.admin_users` allow-list) is decided in `app/auth/callback/route.ts`;
+ * WHAT they may do is decided in the database.
  *
- * WHEN AUTH LANDS, gating `/admin/*` should need no change to any page:
+ * STILL OUTSTANDING:
  *
- *   1. Add `middleware.ts` at the repo root with
- *      `export const config = { matcher: ['/admin/:path*'] }`, resolving the
- *      session and redirecting unauthenticated requests to the login route.
- *      That covers every route under this layout in one place.
  *   2. Resolve the session user here and pass it down (context or props) so the
  *      nav can hide sections the user lacks `<resource>:view` for. The nav's
  *      section names already match RESOURCE_KEYS for exactly this reason.
  *   3. Switch `mutate()` in `app/admin/lib/db.ts` over to
- *      `public.perform_action()` with the real user id, which turns on the
- *      per-action capability check for every admin write at once.
+ *      `public.perform_action()` with the real session user id (it currently
+ *      uses the `ADMIN_ACTOR` env var), which turns on the per-action
+ *      capability check for every admin write at once.
  *
- * See BLOCKERS.md #3.
+ * Until (3) lands, every signed-in admin acts as the single configured actor, so
+ * the per-user capability matrix is not yet enforced on writes. See BLOCKERS.md #3.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -39,8 +40,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="text-xs text-muted-foreground">Site OS</div>
           </div>
           <AdminNav />
-          <p className="mt-6 rounded-md border border-border px-2 py-2 text-[11px] leading-relaxed text-muted-foreground">
-            No authentication layer is configured. Every visitor has full access.
+          <div className="mt-6">
+            <LogoutButton />
+          </div>
+          <p className="mt-3 rounded-md border border-border px-2 py-2 text-[11px] leading-relaxed text-muted-foreground">
+            Sign-in is required to reach these pages. Per-user capability checks
+            on writes are not enabled yet.
           </p>
         </aside>
 

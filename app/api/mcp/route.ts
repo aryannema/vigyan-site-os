@@ -42,9 +42,9 @@
  * route connects with `pg` straight to DATABASE_URL, so auth.uid() would be
  * NULL by default and the trusted-backend branch would apply.
  *
- * It deliberately does NOT rely on that. Each transaction sets
- * `request.jwt.claims` (transaction-local) to the resolved actor, exactly as
- * PostgREST would, because:
+ * It deliberately does NOT rely on that. Each transaction establishes the
+ * resolved actor as the session identity (transaction-local, through
+ * `auth.set_session_identity()` — 006), because:
  *
  *   1. public.contact_inquiries_view is not security_invoker and gates its rows
  *      and its PII masking on auth.uid() (005 §3). With auth.uid() NULL it
@@ -54,8 +54,9 @@
  *   2. It keeps RLS meaningful if this route is ever pointed at a non-owner
  *      database role.
  *
- * With the GUC set, auth.uid() === the actor's uuid, so perform_action()'s
- * anti-impersonation check is satisfied by construction rather than skipped.
+ * With the identity established, auth.uid() === the actor's uuid, so
+ * perform_action()'s anti-impersonation check is satisfied by construction
+ * rather than skipped.
  */
 
 import { NextResponse } from 'next/server';
@@ -308,11 +309,16 @@ async function resolveActor(client: PoolClient, identity: string): Promise<Resol
  * ──────────────────────────────────────────────────────────────────────────*/
 
 /**
- * Run `fn` in one transaction, with request.jwt.claims set to the actor.
+ * Run `fn` in one transaction, acting as the resolved actor.
  *
- * The GUC is transaction-local (`set_config(..., true)`), so it is discarded on
- * COMMIT/ROLLBACK and cannot leak onto the next borrower of this pooled
- * connection.
+ * The identity is established through `auth.set_session_identity()` (006), which
+ * is transaction-local, so it is discarded on COMMIT/ROLLBACK and cannot leak
+ * onto the next borrower of this pooled connection.
+ *
+ * This replaces a direct `set_config('request.jwt.claims', ...)`: that GUC is
+ * writable by any session, so as of 006 `auth.uid()` no longer derives the
+ * identity from it. The setter is SECURITY DEFINER and owner/service-role only —
+ * this route connects as the owner, which is what makes it a trusted caller.
  */
 async function withActorTransaction<T>(
   actorUserId: string,
@@ -321,10 +327,7 @@ async function withActorTransaction<T>(
   const client = await getPool().connect();
   try {
     await client.query('begin');
-    await client.query('select set_config($1, $2, true)', [
-      'request.jwt.claims',
-      JSON.stringify({ sub: actorUserId, role: 'authenticated' }),
-    ]);
+    await client.query('select auth.set_session_identity($1::uuid)', [actorUserId]);
     const out = await fn(client);
     await client.query('commit');
     return out;

@@ -34,6 +34,7 @@ const INVALID_PARAMETER_VALUE = '22023';
 interface AuditRow {
   id: string;
   actor: string;
+  actor_claim: string | null;
   resource_key: string;
   action: string;
   target_id: string | null;
@@ -53,7 +54,7 @@ const mail = (role: Role): string => users.get(role)!.email;
 async function auditRowsFor(actor: string): Promise<AuditRow[]> {
   await db.asOwner();
   return db.query<AuditRow & Record<string, unknown>>(
-    `SELECT id, actor, resource_key, action, target_id, before_data, after_data, created_at
+    `SELECT id, actor, actor_claim, resource_key, action, target_id, before_data, after_data, created_at
        FROM public.action_audit_log WHERE actor = $1 ORDER BY created_at`,
     [actor],
   ) as Promise<AuditRow[]>;
@@ -211,7 +212,7 @@ describe('allowed actions', () => {
     }
   });
 
-  it('resolves an actor given as an email address, and logs it as supplied', async () => {
+  it('resolves an actor given as an email address, and records both spellings', async () => {
     await db.beginTest();
     try {
       const actor = uid('admin');
@@ -221,13 +222,20 @@ describe('allowed actions', () => {
         `SELECT public.perform_action($1, 'users', 'view')`,
         [email],
       );
-      // The log records what was CLAIMED (the email) but resolves the identity.
-      expect(receipt.actor).toBe(email);
+      // CONTRACT CHANGE (008): `actor` is the RESOLVED identity, and the string
+      // the caller supplied moves to `actor_claim`. Before 008, p_actor was
+      // stored verbatim, so the same person acting as a uuid, as a braced uuid
+      // and as an email produced three different `actor` values and an
+      // "everything user X did" query silently under-reported. The claim is
+      // still recorded — it is just no longer what attribution is keyed on.
+      expect(receipt.actor).toBe(actor);
+      expect(receipt.actor_claim).toBe(email);
       expect(receipt.actor_user_id).toBe(actor);
 
-      const rows = await auditRowsFor(email);
+      const rows = await auditRowsFor(actor);
       expect(rows).toHaveLength(1);
-      expect(rows[0]!.actor).toBe(email);
+      expect(rows[0]!.actor).toBe(actor);
+      expect(rows[0]!.actor_claim).toBe(email);
     } finally {
       await db.rollbackTest();
       await db.asOwner();
