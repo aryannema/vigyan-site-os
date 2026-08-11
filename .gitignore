@@ -43,3 +43,4 @@ yarn-error.log*
 # supabase CLI local state (migrations themselves ARE tracked)
 supabase/.branches/
 supabase/.temp/
+.env*

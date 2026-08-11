@@ -97,18 +97,37 @@ export class NoAuthenticatedActorError extends Error {
 /**
  * The identity the admin UI acts as.
  *
- * TODO(auth-phase): this comes from an env var only because there is no session
- * to read it from. When GoTrue lands, replace `resolveActor()` with the session
- * user's id — nothing else in this file, and nothing in any page or action,
- * needs to change: the capability check and the audit trail are already wired to
- * whatever this returns. Returning `null` is the "nobody" case, and every write
- * path refuses on it.
+ * Real session first: reads the signed-in user via the same `@supabase/ssr`
+ * server client the login/callback pages already use (`createServerSupabaseClient`,
+ * `lib/supabase-server.ts`). Middleware refreshes the session cookie before this
+ * ever runs (see `middleware.ts`), so `getUser()` here is reading an
+ * already-validated token, not re-deriving trust from a cookie a client could
+ * forge — that trust boundary is `@supabase/ssr` + Supabase Cloud's own GoTrue,
+ * not this function.
  *
- * Accepts a uuid or an `auth.users` email, matching `perform_action()`'s own
- * actor resolution. Mirrors the `MCP_SERVICE_ACTOR` convention the MCP route
- * uses for the same reason (BLOCKERS.md #4).
+ * `ADMIN_ACTOR` remains as a fallback ONLY for local scripts/tests that have no
+ * browser session to read (there is no cookie jar outside a request). Any real
+ * request always has middleware-refreshed cookies, so the session path is what
+ * actually runs in the deployed app. Accepts a uuid or an `auth.users` email for
+ * that fallback, matching `perform_action()`'s own actor resolution and the
+ * `MCP_SERVICE_ACTOR` convention the MCP route uses for the same reason
+ * (BLOCKERS.md #4).
+ *
+ * Returning `null` is the "nobody" case, and every write path refuses on it.
  */
 async function resolveActor(client: PoolClient): Promise<string | null> {
+  try {
+    const { createServerSupabaseClient } = await import('@/lib/supabase-server');
+    const supabase = await createServerSupabaseClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user?.id) return user.id;
+  } catch {
+    // No request context (e.g. a script run outside Next's server runtime) —
+    // fall through to the ADMIN_ACTOR fallback below rather than throwing.
+  }
+
   const configured = process.env.ADMIN_ACTOR?.trim();
   if (!configured) return null;
 
