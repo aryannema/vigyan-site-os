@@ -16,6 +16,7 @@ import { slugify, type FormState } from '../lib/form';
 import { decodeContentBlocks } from './content-blocks';
 import { RichEditor } from './RichEditor';
 import { LivePreview } from './LivePreview';
+import { AiSidebar } from './AiSidebar';
 
 interface PostFormProps {
   post?: Post;
@@ -59,6 +60,7 @@ export function PostForm({ post, action, submitLabel, categories = [] }: PostFor
   const body = decodeContentBlocks(post?.content_blocks);
 
   const [title, setTitle] = useState(post?.title ?? '');
+  const [seoDescription, setSeoDescription] = useState(post?.seo_description ?? '');
   const [slug, setSlug] = useState(post?.slug ?? '');
   // A slug is a permanent URL, so it is auto-filled from the title only until the
   // user edits it themselves, and never for a post that already has one.
@@ -169,7 +171,8 @@ export function PostForm({ post, action, submitLabel, categories = [] }: PostFor
           id="seo_description"
           name="seo_description"
           rows={2}
-          defaultValue={post?.seo_description ?? ''}
+          value={seoDescription}
+          onChange={(event) => setSeoDescription(event.currentTarget.value)}
         />
       </Field>
 
@@ -234,19 +237,28 @@ export function PostForm({ post, action, submitLabel, categories = [] }: PostFor
         </div>
 
         {mode === 'rich' ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div>
-              <p className="mb-1.5 text-xs text-muted-foreground">Editing</p>
-              <RichEditor blocks={blocks} onChange={setBlocks} />
-            </div>
-            <div>
-              <p className="mb-1.5 text-xs text-muted-foreground">
-                Live preview — exactly what the published page will render
-              </p>
-              <div className="h-[320px] lg:h-full">
-                <LivePreview title={title} blocks={blocks} />
+          <div className="flex flex-col gap-4 lg:flex-row">
+            <div className="grid flex-1 gap-4 lg:grid-cols-2">
+              <div>
+                <p className="mb-1.5 text-xs text-muted-foreground">Editing</p>
+                <RichEditor blocks={blocks} onChange={setBlocks} />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs text-muted-foreground">
+                  Live preview — exactly what the published page will render
+                </p>
+                <div className="h-[320px] lg:h-full">
+                  <LivePreview title={title} blocks={blocks} />
+                </div>
               </div>
             </div>
+            <AiSidebar
+              title={title}
+              seoDescription={seoDescription}
+              blocks={blocks}
+              onApplyTitle={setTitle}
+              onReplaceBody={setBlocks}
+            />
           </div>
         ) : (
           <Field
