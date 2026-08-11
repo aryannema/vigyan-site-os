@@ -31,12 +31,14 @@ import {
   ImageIcon,
   Code2,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { blocksToTiptapDoc, tiptapDocToBlocks, type TiptapDoc } from '@/lib/content/tiptap';
 import type { Block } from '@/lib/content/blocks';
 import { isSafeUrl } from '@/lib/content/blocks';
 import { uploadPostImage } from './upload-actions';
+import { generateAndSaveImage } from './ai-actions';
 
 function ToolbarButton({
   active,
@@ -71,7 +73,14 @@ function ToolbarButton({
 function Toolbar({ editor }: { editor: Editor }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  function insertImage(url: string) {
+    // eslint-disable-next-line no-alert
+    const alt = window.prompt('Alt text (required — describe the image):') ?? '';
+    editor.chain().focus().setImage({ src: url, alt }).run();
+  }
 
   async function handleFileSelected(file: File) {
     setUploading(true);
@@ -80,15 +89,25 @@ function Toolbar({ editor }: { editor: Editor }) {
       const formData = new FormData();
       formData.set('file', file);
       const result = await uploadPostImage(formData);
-      if (result.ok) {
-        // eslint-disable-next-line no-alert
-        const alt = window.prompt('Alt text (required — describe the image):') ?? '';
-        editor.chain().focus().setImage({ src: result.url, alt }).run();
-      } else {
-        setUploadError(result.error);
-      }
+      if (result.ok) insertImage(result.url);
+      else setUploadError(result.error);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleGenerateImage() {
+    // eslint-disable-next-line no-alert
+    const prompt = window.prompt('Describe the image to generate:');
+    if (!prompt) return;
+    setGenerating(true);
+    setUploadError(null);
+    try {
+      const result = await generateAndSaveImage(prompt);
+      if (result.ok) insertImage(result.url);
+      else setUploadError(result.error);
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -214,12 +233,17 @@ function Toolbar({ editor }: { editor: Editor }) {
             window.alert('That URL is not allowed (only http(s) or a relative path).');
             return;
           }
-          // eslint-disable-next-line no-alert
-          const alt = window.prompt('Alt text (required — describe the image):') ?? '';
-          editor.chain().focus().setImage({ src: url, alt }).run();
+          insertImage(url);
         }}
       >
         <LinkIcon className="h-3.5 w-3.5" />
+      </ToolbarButton>
+      <ToolbarButton
+        label="Generate image (AI)"
+        disabled={generating}
+        onClick={handleGenerateImage}
+      >
+        {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
       </ToolbarButton>
       {uploadError && (
         <span className="ml-1 text-xs text-destructive" role="alert">

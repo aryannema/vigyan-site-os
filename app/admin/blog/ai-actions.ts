@@ -26,8 +26,19 @@
  */
 
 import { query, mutate } from '../lib/db';
+import { uploadBytesToStorage } from './upload-actions';
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// A "-latest" alias, not a pinned version: gemini-2.0-flash was deprecated
+// and returned 404 (confirmed live 2026-08-11) while this code was already
+// shipped, taking the feature down in production with no warning. An alias
+// tracks whatever Google currently recommends instead of needing a person to
+// notice a deprecation and update a hardcoded version string.
+const GEMINI_MODEL = 'gemini-flash-latest';
+
+// No "-latest" alias exists for image generation as of 2026-08-11 (checked
+// the live models list) — pinned to a concrete, confirmed-working model.
+// Revisit if this 404s the way gemini-2.0-flash did.
+const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const WRITING_STYLE_SECTION_ID = 'ai_writing_style';
@@ -172,5 +183,63 @@ export async function suggestKeywords(
     return { ok: true, keywords };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Unknown error.' };
+  }
+}
+
+/**
+ * Generates an image from a text prompt and saves it to the SAME public
+ * `post-images` Supabase Storage bucket real uploads go to
+ * (`uploadBytesToStorage`, upload-actions.ts) — one storage location for
+ * every image regardless of source, and automatically reachable from
+ * vigyan-desktop (or anywhere) via its public URL, no separate access path
+ * to build.
+ */
+export async function generateAndSaveImage(
+  prompt: string,
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  if (!prompt.trim()) return { ok: false, error: 'Describe the image you want first.' };
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return { ok: false, error: 'GEMINI_API_KEY is not configured.' };
+  }
+
+  try {
+    const style = await getWritingStyle();
+    const fullPrompt = style.trim()
+      ? `${prompt.trim()} (visual style/brand context, if relevant: ${style.trim()})`
+      : prompt.trim();
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }),
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      return { ok: false, error: `Image generation failed (${response.status}): ${body.slice(0, 300)}` };
+    }
+
+    const data = (await response.json()) as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> };
+      }>;
+    };
+    const inline = data.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+    if (!inline?.data) {
+      return { ok: false, error: 'Gemini did not return image data — the prompt may have been blocked by a safety filter.' };
+    }
+
+    const mimeType = inline.mimeType || 'image/jpeg';
+    const ext = mimeType.split('/')[1] || 'jpg';
+    const bytes = Buffer.from(inline.data, 'base64');
+
+    return await uploadBytesToStorage(new Uint8Array(bytes), mimeType, ext);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Image generation failed.' };
   }
 }
