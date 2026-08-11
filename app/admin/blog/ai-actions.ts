@@ -339,15 +339,26 @@ export async function suggestKeywords(
 async function callGeminiImage(
   config: AiProviderConfig,
   prompt: string,
+  reference?: { mimeType: string; data: string },
 ): Promise<{ mimeType: string; data: string }> {
   if (!config.api_key) throw new Error('Gemini is selected for image, but no API key is configured.');
   const model = config.model || 'gemini-3.1-flash-image';
+  // Reference image support confirmed working via a live test call
+  // 2026-08-11: passing an inlineData part alongside the text prompt lets the
+  // model use it for visual/character consistency across generations (e.g.
+  // "same character, new pose"). Text part first, image part second — matches
+  // the order used in that successful test.
+  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
+    { text: prompt },
+  ];
+  if (reference) parts.push({ inlineData: reference });
+
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.api_key}`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      body: JSON.stringify({ contents: [{ parts }] }),
     },
   );
   if (!response.ok) {
@@ -389,14 +400,30 @@ async function callWebhookImage(
 }
 
 /**
- * Generates an image from a text prompt and saves it to the SAME public
- * `post-images` Supabase Storage bucket real uploads go to
- * (`uploadBytesToStorage`, upload-actions.ts) — one storage location for
- * every image regardless of source, automatically reachable from
- * vigyan-desktop (or anywhere) via its public URL.
+ * Fetches an already-hosted image (e.g. from our own post-images bucket, or
+ * any public URL) and returns it base64-encoded, for use as a reference
+ * image. Size-limited to the same 10MB the upload path enforces — a giant
+ * reference image would otherwise bloat every generation request.
+ */
+async function fetchAsReference(url: string): Promise<{ mimeType: string; data: string }> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not fetch reference image (${response.status}).`);
+  const mimeType = response.headers.get('content-type') || 'image/jpeg';
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength > 10 * 1024 * 1024) throw new Error('Reference image is larger than 10MB.');
+  return { mimeType, data: Buffer.from(buffer).toString('base64') };
+}
+
+/**
+ * Generates an image from a text prompt — optionally using an existing image
+ * (e.g. picked from the media library) as a reference for visual/character
+ * consistency, confirmed working with Gemini via a live test 2026-08-11 —
+ * and saves the result to the SAME public `post-images` Supabase Storage
+ * bucket real uploads go to (`uploadBytesToStorage`, upload-actions.ts).
  */
 export async function generateAndSaveImage(
   prompt: string,
+  referenceImageUrl?: string,
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   if (!prompt.trim()) return { ok: false, error: 'Describe the image you want first.' };
 
@@ -409,10 +436,12 @@ export async function generateAndSaveImage(
       ? `${prompt.trim()} (visual style/brand context, if relevant: ${style.trim()})`
       : prompt.trim();
 
+    const reference = referenceImageUrl?.trim() ? await fetchAsReference(referenceImageUrl.trim()) : undefined;
+
     let inline: { mimeType: string; data: string };
     switch (config.provider) {
       case 'gemini':
-        inline = await callGeminiImage(config, fullPrompt);
+        inline = await callGeminiImage(config, fullPrompt, reference);
         break;
       case 'custom_webhook':
         inline = await callWebhookImage(config, fullPrompt);

@@ -51,6 +51,10 @@ const NAV: NavSection[] = [
     items: [{ label: 'Contact Inquiries', href: '/admin/crm' }],
   },
   {
+    section: 'Media',
+    items: [{ label: 'Media Library', href: '/admin/media' }],
+  },
+  {
     section: 'Users',
     items: [
       { label: 'Users & Roles', href: '/admin/users', exact: true },

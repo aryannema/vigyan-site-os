@@ -100,10 +100,15 @@ function Toolbar({ editor }: { editor: Editor }) {
     // eslint-disable-next-line no-alert
     const prompt = window.prompt('Describe the image to generate:');
     if (!prompt) return;
+    // eslint-disable-next-line no-alert
+    const referenceUrl = window.prompt(
+      'Reference image URL, for a consistent character/face across generations (optional — leave blank to skip; ' +
+        'find URLs in /admin/media, "Media Library"):',
+    );
     setGenerating(true);
     setUploadError(null);
     try {
-      const result = await generateAndSaveImage(prompt);
+      const result = await generateAndSaveImage(prompt, referenceUrl || undefined);
       if (result.ok) insertImage(result.url);
       else setUploadError(result.error);
     } finally {
