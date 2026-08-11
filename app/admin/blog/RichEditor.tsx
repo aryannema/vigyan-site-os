@@ -17,7 +17,7 @@ import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Bold as BoldIcon,
   Italic as ItalicIcon,
@@ -30,11 +30,13 @@ import {
   Heading3,
   ImageIcon,
   Code2,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { blocksToTiptapDoc, tiptapDocToBlocks, type TiptapDoc } from '@/lib/content/tiptap';
 import type { Block } from '@/lib/content/blocks';
 import { isSafeUrl } from '@/lib/content/blocks';
+import { uploadPostImage } from './upload-actions';
 
 function ToolbarButton({
   active,
@@ -67,6 +69,29 @@ function ToolbarButton({
 }
 
 function Toolbar({ editor }: { editor: Editor }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handleFileSelected(file: File) {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.set('file', file);
+      const result = await uploadPostImage(formData);
+      if (result.ok) {
+        // eslint-disable-next-line no-alert
+        const alt = window.prompt('Alt text (required — describe the image):') ?? '';
+        editor.chain().focus().setImage({ src: result.url, alt }).run();
+      } else {
+        setUploadError(result.error);
+      }
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-1 border-b border-border bg-muted px-2 py-1.5">
       <ToolbarButton
@@ -161,10 +186,28 @@ function Toolbar({ editor }: { editor: Editor }) {
         <Code2 className="h-4 w-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="Image"
+        label="Upload image"
+        disabled={uploading}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+      </ToolbarButton>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) void handleFileSelected(file);
+        }}
+      />
+      <ToolbarButton
+        label="Insert image from URL"
         onClick={() => {
           // eslint-disable-next-line no-alert
-          const url = window.prompt('Image URL:');
+          const url = window.prompt('Image URL (for an already-hosted image — use the upload button above for local files):');
           if (!url) return;
           if (!isSafeUrl(url)) {
             // eslint-disable-next-line no-alert
@@ -176,8 +219,13 @@ function Toolbar({ editor }: { editor: Editor }) {
           editor.chain().focus().setImage({ src: url, alt }).run();
         }}
       >
-        <ImageIcon className="h-4 w-4" />
+        <LinkIcon className="h-3.5 w-3.5" />
       </ToolbarButton>
+      {uploadError && (
+        <span className="ml-1 text-xs text-destructive" role="alert">
+          {uploadError}
+        </span>
+      )}
     </div>
   );
 }
