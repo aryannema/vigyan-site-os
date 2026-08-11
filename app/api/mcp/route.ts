@@ -340,13 +340,21 @@ async function resolveActor(client: PoolClient, identity: string): Promise<Resol
  * fallback should not be widened beyond this owner-only connection.
  */
 async function setSessionIdentity(client: PoolClient, actorUserId: string): Promise<void> {
+  // A failed statement poisons the REST of this transaction until a ROLLBACK —
+  // catching the JS exception alone does not clear that, so the fallback query
+  // below would itself fail with "current transaction is aborted" without this
+  // SAVEPOINT. (Found live: the first version of this function shipped without
+  // it and broke every write on Cloud, where the first query always fails.)
+  await client.query('savepoint before_session_identity');
   try {
     await client.query('select auth.set_session_identity($1::uuid)', [actorUserId]);
+    await client.query('release savepoint before_session_identity');
   } catch (error) {
     const code =
       typeof error === 'object' && error !== null && 'code' in error
         ? String((error as { code: unknown }).code)
         : undefined;
+    await client.query('rollback to savepoint before_session_identity');
     if (code !== '42883') throw error;
     await client.query(
       `select set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`,

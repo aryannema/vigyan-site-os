@@ -179,13 +179,21 @@ async function resolveActor(client: PoolClient): Promise<string | null> {
  * beyond this owner-only connection.
  */
 async function setSessionIdentity(client: PoolClient, actorId: string): Promise<void> {
+  // A failed statement poisons the REST of this transaction until a ROLLBACK —
+  // catching the JS exception alone does not clear that, so the fallback query
+  // below would itself fail with "current transaction is aborted" without this
+  // SAVEPOINT. (Found live: the first version of this function shipped without
+  // it and broke every write on Cloud, where the first query always fails.)
+  await client.query('SAVEPOINT before_session_identity');
   try {
     await client.query('SELECT auth.set_session_identity($1::uuid)', [actorId]);
+    await client.query('RELEASE SAVEPOINT before_session_identity');
   } catch (error) {
     const code =
       typeof error === 'object' && error !== null && 'code' in error
         ? String((error as { code: unknown }).code)
         : undefined;
+    await client.query('ROLLBACK TO SAVEPOINT before_session_identity');
     if (code !== '42883') throw error;
     await client.query(
       `SELECT set_config('request.jwt.claims', json_build_object('sub', $1::text, 'role', 'authenticated')::text, true)`,
