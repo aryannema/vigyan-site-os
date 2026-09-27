@@ -63,6 +63,11 @@ psql "$DATABASE_URL" -f supabase/migrations/000_local_auth_stub.sql
 pnpm dev
 ```
 
+**Next:** [docs/BUILDING_YOUR_SITE.md](docs/BUILDING_YOUR_SITE.md) takes you from a running
+database to a live site — what this template gives you, what you build yourself, and the order
+that avoids rework. Then [docs/A_SITE_THAT_SELLS.md](docs/A_SITE_THAT_SELLS.md) before you write
+any copy.
+
 [SETUP.md](SETUP.md) covers what credentials to procure and where they go.
 [BLOCKERS.md](BLOCKERS.md) is the append-only running log of known problems — read §3 before
 deploying anything.
