@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "A generic, brand-neutral Next.js + Postgres site/CMS foundation: content store, blog, careers, CRM, and a roles-and-capabilities permission system enforced in the database.",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -54,5 +54,26 @@
       "@typescript-eslint/typescript-estree": "8.66.0",
       "@typescript-eslint/visitor-keys": "8.66.0"
     }
-  }
+  },
+  "author": "aryannema",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aryannema/vigyan-site-os.git"
+  },
+  "homepage": "https://github.com/aryannema/vigyan-site-os#readme",
+  "bugs": {
+    "url": "https://github.com/aryannema/vigyan-site-os/issues"
+  },
+  "keywords": [
+    "nextjs",
+    "postgres",
+    "cms",
+    "mcp",
+    "model-context-protocol",
+    "rbac",
+    "row-level-security",
+    "agentic",
+    "template",
+    "ai-agent"
+  ]
 }

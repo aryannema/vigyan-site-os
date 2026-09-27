@@ -44,3 +44,6 @@ yarn-error.log*
 supabase/.branches/
 supabase/.temp/
 .env*
+# Must follow the broad .env* above: gitignore is last-match-wins, so the
+# earlier !.env.example was being overridden and the template stayed hidden.
+!.env.example

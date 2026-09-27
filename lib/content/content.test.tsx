@@ -5,7 +5,7 @@
  *
  *   1. The supported inline subset actually produces the elements it claims to
  *      (`**bold**` -> <strong>, `[a](/b)` -> <a href="/b">), because the whole
- *      point of this module is that `vigyanbytes-web`'s `{block.text}` raw
+ *      point of this module is that the upstream site's `{block.text}` raw
  *      interpolation rendered those as literal asterisks and brackets.
  *
  *   2. Everything OUTSIDE the subset degrades instead of executing. Content here

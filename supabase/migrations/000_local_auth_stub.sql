@@ -11,7 +11,7 @@
 -- On a bare local Postgres there is no GoTrue yet (auth-server setup is out of
 -- scope for this phase), so this migration creates the minimum surface the
 -- later migrations need, purely so they can be applied and tested locally.
--- This mirrors the pattern already established in vigyanbytes-web's local
+-- This mirrors the pattern already established in the upstream site's local
 -- bare-metal Postgres + PostgREST stack.
 --
 -- WHEN GOTRUE IS INTRODUCED: DO NOT RUN THIS FILE against that database.
