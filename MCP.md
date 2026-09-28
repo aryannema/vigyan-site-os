@@ -7,7 +7,18 @@ single transaction — the same wall a human admin meets.
 
 ## Authentication
 
-Two credentials are accepted, and they are not equivalent.
+The MCP specification's model is **OAuth 2.1 bearer tokens**; how you obtain the
+token is left open. What exists:
+
+| | what it is | here? |
+|---|---|---|
+| **none** | stdio only — the client already spawned the process | n/a (HTTP endpoint) |
+| **static shared secret** | one key, one identity, never expires | ✅ `MCP_SECRET_KEY` |
+| **self-issued JWT** | per-subject, expiring, scoped, no external provider | ✅ **recommended** |
+| **full OAuth 2.1** | authorization server, discovery, dynamic registration | SDK supports it; not used here |
+| **mTLS or proxy auth** | handled at the reverse proxy, outside MCP | valid, not implemented |
+
+Two credentials are accepted here, and they are not equivalent.
 
 ### A shared secret — simple, and limited
 
@@ -26,12 +37,45 @@ exist in `auth.users`. The token authenticates; **that row's role in
 
 ### JWTs — per-subject, expiring, auditable
 
+#### Who generates the key — nobody central
+
+No signing authority, no registration, no key server. **Whoever runs the site
+generates the secret on their own machine**, and the same process signs and
+verifies.
+
 ```bash
-pnpm mcp:token --new-secret            # 64 chars
+pnpm mcp:token --new-secret            # 64 random chars, generated locally
 export MCP_JWT_SECRET='...'
 
 pnpm mcp:token --issue agent@example.com
 ```
+
+HS256 is **symmetric**: one secret both signs and checks. The server handing out
+a token is the server validating it, which is why there is no registration step
+— it is talking to itself.
+
+| | who sets it | what it is for |
+|---|---|---|
+| `MCP_JWT_SECRET` | you, via `--new-secret` | signs and verifies |
+| `MCP_JWT_ISSUER` | defaults to `vigyan-site-os` | which system minted this |
+| `MCP_JWT_AUDIENCE` | defaults to `vigyan-site-os-mcp` | which system may accept it |
+
+`iss` and `aud` earn their keep when several services share one secret: without
+an `aud` check, a token for one would open the other. Give each its own
+`MCP_JWT_AUDIENCE`. Running one site? The defaults are correct and you never
+touch them.
+
+**Every clone of this template gets its own isolated authentication.** Your
+secret is yours; tokens minted against it work on your deployment and nowhere
+else. There is no shared secret in the repository and no default — which is also
+why a missing or short secret **disables JWT auth** rather than falling back. A
+shipped default would mean every deployment on earth shared one key: the
+appearance of security with none of it.
+
+Outgrowing it: HS256 shares the secret between minter and verifier. If tokens
+must be minted somewhere you would not trust with a signing key, switch to
+**RS256** — the minter keeps the private key, this server needs only the public
+half. Only the verifier changes.
 
 Returns a pair:
 
@@ -86,9 +130,24 @@ Lifetimes: `MCP_JWT_ACCESS_MINUTES`, `MCP_JWT_REFRESH_DAYS`.
 
 ### The type check that makes this worth doing
 
-Both tokens are signed with the same key, by the same issuer, for the same
-audience, carrying the same scopes. **The only thing separating them is a `typ`
-claim**, and it is checked in both directions:
+Decode both tokens from one `--issue` and compare:
+
+```
+claim    | ACCESS               | REFRESH              | same?
+---------|----------------------|----------------------|--------
+iss      | vigyan-site-os       | vigyan-site-os       | YES
+aud      | vigyan-site-os-mcp   | vigyan-site-os-mcp   | YES
+sub      | agent@example.com    | agent@example.com    | YES
+scopes   | ['mcp']              | ['mcp']              | YES
+typ      | access               | refresh              | ** NO **
+exp      | +15 min              | +30 days             | ** NO **
+```
+
+Same key, same algorithm, same everything — **except `typ` and expiry**. Delete
+the `typ` check and the two become literally interchangeable: a 30-day refresh
+token would pass every other test a valid access token passes.
+
+So it is checked in both directions:
 
 ```
 refresh token presented as an access token  ->  rejected
@@ -137,8 +196,31 @@ re-established from the bearer token on every request, so there is no session to
 end. Well-behaved clients are cleaning up; telling them the cleanup failed would
 be misleading.
 
-**The deprecated HTTP+SSE transport is not implemented**, and will not be.
-Building on something already replaced is not worth the code.
+### SSE is not dead — the two-endpoint transport is
+
+"SSE is deprecated" is a misleading shorthand. Two different things:
+
+| | status |
+|---|---|
+| **SSE the technology** (`text/event-stream`) | **alive** — Streamable HTTP uses it internally |
+| **HTTP+SSE the transport** (two endpoints) | **deprecated**, replaced in revision 2025-03-26 |
+
+**The old transport used two endpoints.** A client opened `GET /sse` and held it
+open indefinitely; the server replied down that long-lived stream while the
+client posted requests to a *separate* `POST /messages/`. Two connections that
+had to stay correlated — so a dropped stream killed the session, and it could
+not survive a load balancer routing the two endpoints to different servers.
+
+**Streamable HTTP uses one endpoint.** `POST /api/mcp` carries the request and
+the server answers with `application/json` or `text/event-stream` as needed.
+Same URL, same request. SSE is still there — as a *response mode* rather than a
+connection you maintain.
+
+This endpoint always answers `application/json`, because every tool here is a
+synchronous query against Postgres. That is a complete Streamable HTTP
+implementation: streaming is permitted, not required.
+
+**The deprecated two-endpoint transport is not implemented**, and will not be.
 
 CORS preflight does **not** reflect origins and does **not** allow credentials.
 This endpoint is for programmatic clients holding a bearer token; echoing
