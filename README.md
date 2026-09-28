@@ -12,6 +12,141 @@ them through the same capability checks a human admin goes through.
 > [BLOCKERS.md](BLOCKERS.md) §3. Do not expose this to the internet as-is. This is a
 > foundation to build on, not a finished product to deploy.
 
+## Why not just use Wix?
+
+Wix is excellent at the thing it does: get a brochure site online in an
+afternoon, with no developer. If that is what you need, use Wix. This is not
+trying to compete with it.
+
+The wall you hit is the second thing you ask for.
+
+> "Can a client edit blog posts but not publish them without my review?"
+>
+> "Can my accountant see enquiries with phone numbers hidden?"
+>
+> "Can an AI agent draft posts overnight, with the same permissions as a junior
+> editor?"
+>
+> "Can I query my own leads with SQL?"
+>
+> "Can I take my data and leave?"
+
+On a hosted site builder those are not hard questions — they are **unavailable**
+ones. There is no database you can reach, no permission model you can extend, no
+place to put your own logic. You get the features the platform decided to build,
+at the price the platform decides to charge, for as long as the platform exists.
+
+This is the other trade. You run it, you own the database, and every part is
+open to change.
+
+| | hosted builder | this |
+|---|---|---|
+| Your database | not exposed | **Postgres, yours, direct SQL** |
+| Permissions | what the plan offers | **rows and columns, enforced in the database** |
+| Custom logic | plugins from a marketplace | **your own code, no marketplace** |
+| AI agents operating it | vendor features | **an MCP endpoint through the same permission checks** |
+| Where the data lives | vendor's choice | **your server, your country** |
+| Leaving | export what they let you | **it is already yours** |
+| Cost | monthly, forever, per feature tier | **₹700–1,100/month for a VPS, any number of sites** |
+
+## The idea worth stealing even if you never use this
+
+**Most systems check permissions in the user interface.** Hide the button, and
+the capability is "revoked" — until someone reaches the table through an API
+client, a script, `psql`, or an admin screen a colleague added last month and
+forgot to guard. The checkbox said revoked; the database disagreed.
+
+Here the check lives in Postgres:
+
+```
+reads   ->  user_has_capability(actor, resource_key, action)
+writes  ->  perform_action(actor, resource_key, action, target, payload)
+```
+
+`perform_action()` authorizes **and** writes the audit row in one transaction.
+There is no write path that produces a permission decision without also
+producing an audit trail — not by convention, but because no other path exists.
+
+It does not matter whether the caller is the admin UI, a script, or an AI agent.
+They all meet the same wall.
+
+### Measured, not asserted
+
+Run `tests/e2e/mcp.sh` against a real database and watch it happen. Same
+endpoint, same tool, two different identities:
+
+```
+editor → post created, audited, and the audit names who did it
+viewer → "not permitted to create on blog", and nothing was written
+```
+
+The refusal came from **Postgres**, not from the code that received the request.
+24 assertions, all passing. [tests/README.md](tests/README.md) has the setup.
+
+## An AI agent is a user, not a feature
+
+`POST /api/mcp` exposes the site's resources as [Model Context
+Protocol](https://modelcontextprotocol.io) tools — so Claude, or any MCP client,
+can operate the site.
+
+The interesting part is not that an agent *can* write posts. It is that the
+agent **has a role**, and the role is enforced the same way yours is. Give it
+`blog:edit` without `blog:publish` and it writes drafts it cannot ship. Its calls
+land in the audit log next to yours, naming it.
+
+That is the difference between an AI feature and an AI **user**. Most products
+bolt a chat widget onto an admin panel and hope the prompt holds. Here the
+constraint is a row in `role_capabilities`, and no prompt can talk its way past
+it.
+
+Authentication is per-agent: short-lived access tokens with refresh, so each
+agent is identifiable in the audit log and revocable on its own.
+
+## The CRM, and privacy that survives the UI
+
+Contact enquiries land in `contact_inquiries`. **Nothing reads that table
+directly** — every authenticated read goes through `contact_inquiries_view`,
+which is where the rule lives:
+
+```sql
+CREATE VIEW public.contact_inquiries_view
+WITH (security_barrier = true) AS
+SELECT
+  ci.full_name,
+  CASE WHEN crm_pii_unmasked(auth.uid())
+       THEN ci.email ELSE mask_email(ci.email) END AS email,
+  CASE WHEN crm_pii_unmasked(auth.uid())
+       THEN ci.phone_number ELSE mask_phone(ci.phone_number) END AS phone_number,
+  NOT crm_pii_unmasked(auth.uid()) AS pii_masked
+FROM public.contact_inquiries ci
+WHERE user_has_capability(auth.uid(), 'crm', 'view');
+```
+
+Read that carefully, because four separate decisions are in it:
+
+**Rows are gated by capability.** No `crm:view`, no rows. RLS is enabled on 16
+tables here; this view re-imposes the row rule itself so it is exactly as
+restrictive on rows and *strictly more* restrictive on columns.
+
+**Seeing a real phone number is a capability**, not a screen. Hold `crm:view`
+and you see `9•••••1234`. Hold `crm:edit` and you see the number. A support
+agent who opens `psql` sees exactly what the UI showed them.
+
+**`security_barrier = true` closes a real side channel.** Without it the query
+planner may push a caller-supplied condition *below* the capability check —
+including a cheap user-defined function — letting someone with no `crm:view`
+observe which rows exist through side effects. The masked columns cannot leak
+that way (an outer filter on `email` is rewritten onto the `CASE`, so it sees
+the mask), but the row gate needs the barrier.
+
+**`pii_masked` is returned to the UI** so the interface never re-derives the
+rule — and therefore cannot re-derive it *wrongly*. The badge and the disabled
+`mailto:` follow what the database already decided.
+
+That is a different promise from "we hide it in the interface." It is the one
+that still holds when someone connects a BI tool, exports a CSV, or opens a
+database client to debug something.
+
 ## What is already built
 
 Not a scaffold with TODOs — these are working screens backed by 16 tables, 15
@@ -135,22 +270,7 @@ loop, that a 1 GB VPS dies during `next build` with a bare exit 137.
 
 [docs/WRITING_SKILLS.md](docs/WRITING_SKILLS.md) shows how to write your own.
 
-## What this is for
-
-A **skeleton you clone to build a real business site** — not a demo, and not a
-theme. Brand-neutral on purpose: there is no logo, no colour story and no copy to
-delete, so the first commit after cloning is your own brand rather than someone
-else's removal.
-
-It exists because the boring parts of a small-business site are the same every
-time — blog, editable page content, careers, an enquiry inbox, a media library,
-an admin area, and permissions over all of it — and those parts are where the
-security mistakes live. Here they are already built, and built so the permission
-model cannot be bypassed by reaching around the UI.
-
-**What you are expected to spend your time on:** the design, the copy, and the
-one or two things your business actually does differently. **What you should not
-have to rebuild:** who may publish a post, and whether the audit row exists.
+## Who this is for
 
 Reasonable uses:
 
@@ -163,42 +283,6 @@ Reasonable uses:
 Not a fit if you want a static marketing page (this needs a Node runtime and
 Postgres — see [HOSTING.md](HOSTING.md)), or if you want a finished product: see
 the warning above.
-
-## Why this exists
-
-Most CMS templates check permissions in the UI. Hide the button, and the capability is
-"revoked" — until someone reaches the table through `supabase-js`, PostgREST, `psql`, or an
-admin screen that forgot. The checkbox said revoked; the database disagreed.
-
-Here the check lives in Postgres:
-
-```
-reads   ->  public.user_has_capability(actor, resource_key, action)
-writes  ->  public.perform_action(actor, resource_key, action, target, payload)
-```
-
-`perform_action()` authorizes **and** audits in one atomic step, so no write path can produce
-a permission decision without also producing an audit row. Column-level concerns that RLS
-cannot express — "may edit a post, may not *publish* one" — are enforced by trigger rather
-than by convention (`supabase/migrations/007_*`).
-
-The practical consequence: it does not matter whether the caller is the admin UI, a script,
-or an AI agent. They all meet the same wall.
-
-## The agentic surface
-
-`POST /api/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) JSON-RPC
-endpoint exposing the site's governed resources as tools. Every tool call is
-capability-checked in the database before it touches data, and runs inside a single
-transaction — if the data write fails after the audit row is inserted, both roll back.
-
-An agent connected to it can draft and publish posts, edit CMS sections, manage job
-openings, and read CRM inquiries — each subject to the role its identity carries. Give the
-agent a role with `blog:edit` but not `blog:publish` and it can write drafts it cannot ship.
-
-AI provider choice is configuration, not code (`public.ai_provider_config`, admin UI at
-`/admin/ai-settings`), so the writing assistant and image generation are not hardcoded to
-one vendor.
 
 ## Stack
 
@@ -257,7 +341,9 @@ want the resolver pattern.
 | [docs/MIGRATIONS.md](docs/MIGRATIONS.md) | schema changes, and why order matters |
 | [MCP.md](MCP.md) | the agent endpoint: JWT auth, refresh tokens, Streamable HTTP |
 | [SECURITY.md](SECURITY.md) | the threat model and what is not covered yet |
+| [ROADMAP.md](ROADMAP.md) | **what is built, WIP, and not started** — read before assuming |
 | [BLOCKERS.md](BLOCKERS.md) | **read before deploying** — known gaps, including admin auth |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | scrubbing secrets, screenshots and real data before you publish |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | how to work on it |
 
 [docs/A_SITE_THAT_SELLS.md](docs/A_SITE_THAT_SELLS.md) is worth reading even if
