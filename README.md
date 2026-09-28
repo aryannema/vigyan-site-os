@@ -12,6 +12,110 @@ them through the same capability checks a human admin goes through.
 > [BLOCKERS.md](BLOCKERS.md) §3. Do not expose this to the internet as-is. This is a
 > foundation to build on, not a finished product to deploy.
 
+## What is already built
+
+Not a scaffold with TODOs — these are working screens backed by 16 tables, 15
+SQL functions and 4 test suites.
+
+### Admin
+
+| screen | what it does |
+|---|---|
+| `/admin` | dashboard |
+| `/admin/blog` · `/new` · `/[id]` | write, edit, publish posts — **editing and publishing are separate capabilities** |
+| `/admin/cms` | edit page content without a deploy; every change versioned in `content_history` |
+| `/admin/careers` · `/new` · `/[id]` | job openings |
+| `/admin/crm` | contact enquiries, **with PII masked by default** |
+| `/admin/media` | uploads and library |
+| `/admin/users` | accounts, roles, approval |
+| `/admin/users/capabilities` | grant and revoke per resource and action |
+| `/admin/ai-settings` | choose the AI provider and model — configuration, not code |
+
+### The authorization core
+
+Two functions every path goes through:
+
+```
+reads   →  user_has_capability(actor, resource_key, action)
+writes  →  perform_action(actor, resource_key, action, target, payload)
+```
+
+`perform_action()` authorizes **and** writes the audit row in one transaction, so
+no write can produce a permission decision without also producing an audit trail.
+It is not a convention — there is no code path that skips it.
+
+Beyond that:
+
+- **`publish_capability_guard`** — a trigger enforcing what RLS cannot express:
+  "may edit a post, may **not** publish one" is a column-level rule, so it is
+  enforced by trigger rather than by a hidden button
+- **`mask_email` / `mask_phone` / `crm_pii_unmasked`** — CRM personal data is
+  masked in the database. Seeing a real phone number is a *capability*, so it is
+  masked for a direct `psql` query too, not just in the UI
+- **`audit_row_change`** — audit by construction
+- **`capability_lookup`** — kept out of `authenticated`'s reach, so the
+  permission table cannot be enumerated by a logged-in user
+
+### The 16 tables
+
+```
+posts · site_content · content_history · job_openings · contact_inquiries
+admin_users · user_roles · user_entitlements · role_capabilities
+action_audit_log · mcp_audit_log · ai_provider_config
+whatsapp_conversations · whatsapp_messages
+auth.users · auth.session_identity
+```
+
+### The agent endpoint
+
+`POST /api/mcp` — the same resources as tools, **through the same capability
+checks**. Give an agent a role with `blog:edit` but not `blog:publish` and it
+writes drafts it cannot ship. Calls land in `mcp_audit_log` like any other write.
+
+### Tested where it matters
+
+```
+permission-matrix.test.ts     every role × resource × action
+perform-action.test.ts        the write path and its audit guarantee
+pii-masking.test.ts           masking holds below the UI
+adversarial-findings.test.ts  regression tests for attempted bypasses
+```
+
+That last file is the interesting one: each test is a way someone tried to reach
+around the permission model, kept so it cannot come back.
+
+---
+
+## Ship a site in a weekend, not a quarter
+
+The parts of a business site that take longest are the parts nobody sees: roles
+and permissions, an audit trail, a schema that survives its second feature, and
+an admin area a non-technical owner can be trusted with. Those are done here, and
+done so the permission model cannot be bypassed by reaching around the UI.
+
+**Ten Claude skills ship with the repo**, in `.claude/skills/`. They are not
+prompts — they are written-down decisions, so you get the same answer on Tuesday
+that you got on Monday:
+
+| skill | what it does |
+|---|---|
+| `feature-intake` | asks the right questions **before** any schema is designed |
+| `feature-schema` | evolves tables and capabilities for a new feature |
+| `design` | shadcn/ui mechanics, the form validation layer, UI bugs that shipped |
+| `feature-testing` | drives it in a real browser to find what nobody predicted |
+| `database` | migrations, and the DDL/DML separation |
+| `brand` | **a template you fill in** — identity is yours, not ours |
+| `cloudflare` | DNS cutover, TLS modes, the redirect loop, keeping email alive |
+| `seo-optimize` | before launch |
+| `mcp` | the agent endpoint |
+| `site-bootstrap` | standing up a fresh deployment |
+
+They encode things that cost someone an afternoon: that `NEXT_PUBLIC_` is inlined
+at build time, that Cloudflare's *Flexible* TLS mode causes an infinite redirect
+loop, that a 1 GB VPS dies during `next build` with a bare exit 137.
+
+[docs/WRITING_SKILLS.md](docs/WRITING_SKILLS.md) shows how to write your own.
+
 ## What this is for
 
 A **skeleton you clone to build a real business site** — not a demo, and not a
@@ -122,7 +226,12 @@ want the resolver pattern.
 
 | | |
 |---|---|
+| [REQUIREMENTS.md](REQUIREMENTS.md) | versions, machine sizing, what is not optional |
+| [ENVIRONMENT.md](ENVIRONMENT.md) | **start here** — pnpm, the CAS, Postgres, env vars |
 | [SETUP.md](SETUP.md) | environment, database, first run |
+| [docs/BRANDING.md](docs/BRANDING.md) | defining a brand, with a worked example, and how to get Claude to apply it |
+| [docs/WRITING_SKILLS.md](docs/WRITING_SKILLS.md) | writing skills for your own project |
+| [docs/DDL_DML.md](docs/DDL_DML.md) | schema vs data, the four tiers, and where this repo mixes them |
 | [HOSTING.md](HOSTING.md) | **Hostinger + Coolify (India), AWS, Vercel** — requirements and real costs |
 | [docs/BUILDING_YOUR_SITE.md](docs/BUILDING_YOUR_SITE.md) | adding pages, sections and features |
 | [docs/A_SITE_THAT_SELLS.md](docs/A_SITE_THAT_SELLS.md) | conversion principles — what makes a site earn its keep, not just look finished |

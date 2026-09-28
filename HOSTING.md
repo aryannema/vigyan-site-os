@@ -65,6 +65,48 @@ relationship or the per-seat pricing.
 
 ### Why this combination for India
 
+Three reasons, and the first is the one that wins business.
+
+#### 1. The data never leaves India
+
+With a Mumbai VPS, the application **and its database** sit on Indian
+infrastructure. Nothing about a page view crosses a border.
+
+That matters commercially, not just legally. Under the **DPDP Act 2023**,
+cross-border transfer of personal data is permitted for most destinations — so
+using a US provider is usually *lawful*. But "lawful with a transfer mechanism
+we can explain" is a much longer conversation than **"it is on a server in
+Mumbai"**, and some buyers will not have the longer conversation at all:
+
+- Government and PSU-adjacent work, where residency is often a tender condition
+- Banking, insurance and health, where the compliance team asks before the
+  business team does
+- Any client who has been asked by *their* customers where the data lives
+
+With Vercel + Supabase Cloud you are answering "United States, under these
+contractual clauses." With a Mumbai VPS you are answering "Mumbai." For a
+sovereignty-conscious buyer that is the entire difference, and it is a reason to
+choose you over a competitor who cannot say it.
+
+The honest caveat: **Cloudflare in front is still a global CDN.** Cached assets
+and TLS termination happen at an edge that may be outside India. If a
+requirement is strictly "no data leaves the country", you either run
+Cloudflare's India-only settings or drop the proxy — and lose DDoS protection.
+Know which you are promising.
+
+#### 2. Latency is on the critical path
+
+This is Next.js App Router with React Server Components: **pages render on the
+server for every request.** A visitor in Delhi hitting a Mumbai origin sees a
+round trip of tens of milliseconds. The same visitor hitting a US origin sees
+250–300 ms, on every navigation, before the page starts rendering.
+
+Static sites hide this behind a CDN. Server-rendered ones cannot.
+
+#### 3. Cost — measured, not guessed
+
+
+
 Hostinger has a **Mumbai** region, so Indian visitors get single-digit to low-tens
 millisecond latency instead of a transatlantic round trip on every server-rendered
 page. Since RSC renders per request, that round trip is on the critical path for
@@ -125,12 +167,19 @@ Then in Coolify's UI:
 
 ---
 
-## Option 2 — AWS
+## Option 2 — AWS  *(WIP — not yet deployed this way)*
+
+> [!NOTE]
+> **This section is a plan, not a runbook.** The Hostinger + Coolify path above
+> has actually been used; the AWS paths below have not been deployed and
+> verified end to end. Costs are list-price estimates and the steps are from
+> documentation rather than from having hit the errors. Treat it as a map, and
+> expect to find things it does not mention.
 
 More moving parts and more expensive for one site, worth it when you already have
 an AWS account, a compliance requirement, or real scale. Use **ap-south-1
 (Mumbai)** or **ap-south-2 (Hyderabad)** for the same latency and residency
-reasons.
+reasons as above.
 
 ### 2a. Amplify Hosting + RDS — least work
 
@@ -187,19 +236,45 @@ AWS for production.
 
 ---
 
-## Cost, honestly
+## Cost — Hostinger vs Vercel + Supabase
+
+The comparison that actually decided this, for **one production site**:
+
+| | Hostinger VPS + Coolify | Vercel + Supabase |
+|---|---|---|
+| Compute | ₹700–1,100/mo (2 vCPU, 8 GB) | Vercel Pro **$20/seat/mo** (~₹1,700) |
+| Database | included on the same box | Supabase Pro **$25/mo** (~₹2,100) |
+| **Monthly** | **₹700–1,100** | **~₹3,800**, before overages |
+| Bandwidth | VPS allowance, generous | metered; overages are the usual surprise |
+| Scaling | you resize the VPS | automatic |
+| Patching | **yours** | theirs |
+| Backups | **you configure them** | managed |
+| Where the data is | **Mumbai** | US, unless you pay for regions |
+| Second site | ₹0 — same box | another project, often another seat |
+
+**Roughly 3–4× cheaper, and the gap widens with every additional site**, because
+a VPS hosts several and a seat-priced PaaS does not.
+
+What you are buying with the saved money is work you now do yourself: OS
+updates, a firewall, backups you must *test*, and a single failure domain. That
+is a real trade, not a free win. It is the right trade for a small number of
+sites where someone is comfortable in a terminal; it is the wrong trade if
+nobody wants to be paged.
+
+**The free tiers are real** — Vercel Hobby plus Supabase free will genuinely host
+a portfolio or a low-traffic site at ₹0. The comparison above is for production,
+where Supabase's free tier pauses idle projects and Vercel Hobby forbids
+commercial use.
+
+### Full picture
 
 | | monthly | notes |
 |---|---|---|
-| Hostinger VPS + Coolify + Postgres on the same box | **₹700–1,100** | one box, you patch it |
-| Vercel free + Supabase free | ₹0 | real limits; fine for a portfolio |
-| Vercel Pro + Supabase Pro | ~₹3,500 | no servers to run |
-| AWS Amplify + RDS | ~₹1,300–3,500 | |
-| AWS Fargate + ALB + RDS | ~₹3,500–7,000 | production shape |
-
-For one site serving India, **Hostinger + Coolify is the best value** and the
-reason is not only price: the app and its database sit in the same datacentre as
-its users, and every server-rendered page benefits.
+| Hostinger VPS + Coolify + Postgres, one box | **₹700–1,100** | best value; you patch it |
+| Vercel free + Supabase free | ₹0 | non-commercial; idle projects pause |
+| Vercel Pro + Supabase Pro | ~₹3,800 | no servers to run |
+| AWS Amplify + RDS | ~₹1,300–3,500 | *(WIP — see below)* |
+| AWS Fargate + ALB + RDS | ~₹3,500–7,000 | *(WIP)* |
 
 ---
 
