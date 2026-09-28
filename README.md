@@ -236,6 +236,7 @@ want the resolver pattern.
 | [docs/BUILDING_YOUR_SITE.md](docs/BUILDING_YOUR_SITE.md) | adding pages, sections and features |
 | [docs/A_SITE_THAT_SELLS.md](docs/A_SITE_THAT_SELLS.md) | conversion principles — what makes a site earn its keep, not just look finished |
 | [docs/MIGRATIONS.md](docs/MIGRATIONS.md) | schema changes, and why order matters |
+| [MCP.md](MCP.md) | the agent endpoint: JWT auth, refresh tokens, Streamable HTTP |
 | [SECURITY.md](SECURITY.md) | the threat model and what is not covered yet |
 | [BLOCKERS.md](BLOCKERS.md) | **read before deploying** — known gaps, including admin auth |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | how to work on it |

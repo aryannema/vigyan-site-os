@@ -64,6 +64,8 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import { z } from 'zod';
 
+import { jwtEnabled, verifyMcpJwt } from '@/lib/mcp-auth';
+
 import {
   EMPLOYMENT_TYPES,
   JOB_OPENING_STATUSES,
@@ -204,6 +206,8 @@ function asMcpError(err: unknown): McpError {
 
 /** The identity string recorded for callers holding the service bearer token. */
 const SERVICE_TOKEN_IDENTITY = 'mcp-service-token';
+/** Namespaces JWT identities so they cannot collide with the service token. */
+const JWT_IDENTITY_PREFIX = 'jwt:';
 
 /** Length-independent constant-time comparison of two secrets. */
 function secretsMatch(presented: string, expected: string): boolean {
@@ -219,22 +223,29 @@ function secretsMatch(presented: string, expected: string): boolean {
  * credential we accept. It never throws and never decides what to DO about an
  * anonymous caller — that is the handler's job.
  */
-function resolveCallerIdentity(request: Request): string | null {
+async function resolveCallerIdentity(request: Request): Promise<string | null> {
   const header = request.headers.get('authorization');
-  const secret = process.env.MCP_SECRET_KEY;
+  if (!header) return null;
 
-  if (header && secret && secretsMatch(header, `Bearer ${secret}`)) {
+  const secret = process.env.MCP_SECRET_KEY;
+  if (secret && secretsMatch(header, `Bearer ${secret}`)) {
     return SERVICE_TOKEN_IDENTITY;
   }
 
-  // TODO(auth-phase): add session-cookie identity resolution once GoTrue lands.
-  // The shape it will take: read the auth cookie, verify the JWT, and return
-  // the session user's uuid (or email) as the identity string. Everything
+  // A JWT identifies WHICH client called, expires on its own, and can be issued
+  // per person or per service — none of which a single shared secret can do.
+  // It authenticates only: the subject's role in user_roles still decides every
+  // capability, so a token cannot grant what the database has not granted.
+  const bearer = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
+  if (bearer && bearer.split('.').length === 3) {
+    const verified = await verifyMcpJwt(bearer);
+    if (verified) return `${JWT_IDENTITY_PREFIX}${verified.subject}`;
+  }
+
+  // TODO(auth-phase): session-cookie identity once GoTrue lands. The shape:
+  // read the auth cookie, verify it, return the session user's uuid. Everything
   // downstream already works in terms of an identity string that resolves to an
-  // auth.users row, so only this function needs a second branch — plus dropping
-  // MCP_SERVICE_ACTOR indirection for cookie callers, since a session identity
-  // IS the actor. Deliberately not stubbed or faked here: there is no session
-  // mechanism to consult yet, and pretending otherwise would hide the gap.
+  // auth.users row. Deliberately not stubbed — pretending would hide the gap.
 
   return null;
 }
@@ -259,8 +270,34 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * user_roles is what actually decides every capability check below.
  */
 async function resolveActor(client: PoolClient, identity: string): Promise<ResolvedActor> {
+  // A JWT names its own subject, so it does NOT borrow MCP_SERVICE_ACTOR. That
+  // is the practical gain over the shared secret: the audit log records who
+  // called, not merely that something did.
+  if (identity.startsWith(JWT_IDENTITY_PREFIX)) {
+    const subject = identity.slice(JWT_IDENTITY_PREFIX.length);
+    const { rows } = UUID_RE.test(subject)
+      ? await client.query<{ id: string; email: string | null }>(
+          'select u.id::text as id, u.email from auth.users u where u.id = $1::uuid limit 1',
+          [subject],
+        )
+      : await client.query<{ id: string; email: string | null }>(
+          'select u.id::text as id, u.email from auth.users u where lower(u.email) = lower(btrim($1)) limit 1',
+          [subject],
+        );
+    const found = rows[0];
+    if (!found) {
+      throw new McpError(
+        ERROR_CODES.IDENTITY_UNRESOLVED,
+        'The token is valid but its subject does not match any auth.users row, so ' +
+          'perform_action() cannot resolve it. Issue tokens whose sub is a real ' +
+          'identity holding a role in user_roles.',
+        403,
+      );
+    }
+    return { identity, actor: subject, actorUserId: found.id };
+  }
+
   if (identity !== SERVICE_TOKEN_IDENTITY) {
-    // Reachable only once resolveCallerIdentity() grows its session branch.
     throw new McpError(
       ERROR_CODES.IDENTITY_UNRESOLVED,
       `Unknown identity kind: ${identity}`,
@@ -1357,14 +1394,15 @@ async function callTool(identity: string, params: unknown): Promise<Json> {
 export async function POST(request: Request) {
   // Authenticate before parsing anything: an anonymous caller gets no
   // processing beyond a header comparison.
-  const identity = resolveCallerIdentity(request);
+  const identity = await resolveCallerIdentity(request);
   if (!identity) {
     return rpcError(
       null,
       new McpError(
         ERROR_CODES.UNAUTHENTICATED,
-        'Unauthorized: this endpoint requires an `Authorization: Bearer <MCP_SECRET_KEY>` header. ' +
-          'Session-cookie authentication is not available yet.',
+        'Unauthorized: send `Authorization: Bearer <token>`, where the token is ' +
+          'either MCP_SECRET_KEY or a JWT signed with MCP_JWT_SECRET carrying the ' +
+          '`mcp` scope. Session-cookie authentication is not available yet.',
         401,
       ),
     );
@@ -1465,4 +1503,84 @@ export async function POST(request: Request) {
     }
     return rpcError(id, mcpError);
   }
+}
+
+
+/**
+ * Streamable HTTP — the transport the MCP specification adopted in revision
+ * 2025-03-26, replacing the older HTTP+SSE pair.
+ *
+ * A client MAY open a GET stream on the same URL to receive server-initiated
+ * messages. This server has none to send: every tool call here is a synchronous
+ * request/response against Postgres, with no progress notifications and no
+ * subscriptions. So the honest answer to GET is 405 with `Allow: POST`, which
+ * the specification explicitly permits — the alternative is an idle stream that
+ * holds a connection open and never carries a byte.
+ *
+ * POST alone is a complete Streamable HTTP implementation. Adding a stream
+ * would mean adding something worth streaming first.
+ *
+ * The old HTTP+SSE transport is NOT implemented, deliberately. It is deprecated,
+ * and building on it now would be building on something already replaced.
+ */
+export async function GET(request: Request) {
+  // Authenticate even to say "not supported": an anonymous caller should not be
+  // able to learn anything about this endpoint, including its shape.
+  const identity = await resolveCallerIdentity(request);
+  if (!identity) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
+    );
+  }
+  return NextResponse.json(
+    {
+      error: 'This endpoint does not open a server-initiated stream.',
+      detail:
+        'Streamable HTTP permits a server to decline the optional GET stream. Every ' +
+        'tool here is a synchronous request/response, so there is nothing to push. ' +
+        'Send JSON-RPC over POST to this same URL.',
+    },
+    { status: 405, headers: { Allow: 'POST' } },
+  );
+}
+
+/**
+ * Session termination. Streamable HTTP lets a client DELETE to end a session it
+ * started with `Mcp-Session-Id`.
+ *
+ * This server is stateless: identity is re-established from the bearer token on
+ * every request, so there is no session to end. Returning 204 keeps
+ * well-behaved clients happy — they are cleaning up, and telling them the
+ * cleanup failed would be misleading.
+ */
+export async function DELETE(request: Request) {
+  const identity = await resolveCallerIdentity(request);
+  if (!identity) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } },
+    );
+  }
+  return new NextResponse(null, { status: 204 });
+}
+
+/**
+ * Preflight. A browser-based MCP client sends Authorization, which is not a
+ * CORS-safelisted header, so it preflights.
+ *
+ * Origin is NOT reflected and credentials are NOT allowed: this endpoint is for
+ * programmatic clients holding a bearer token, and echoing arbitrary origins
+ * would let any page a victim visits call it with their token.
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      Allow: 'POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+      'Access-Control-Max-Age': '600',
+    },
+  });
 }
