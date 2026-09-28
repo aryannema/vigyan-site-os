@@ -35,22 +35,22 @@ What is missing is the **public form that writes into it.** The shipped public
 pages are `/`, `/login` and `/pending-approval` — there is no `/contact`. So
 today the CRM is a working inbox with no letterbox attached.
 
-Adding one is deliberately small: a form, a server action, an insert. The reason
-it is not here is that a contact form worth shipping needs a spam defence and a
-consent checkbox, and both are decisions a site owner should make rather than
-inherit.
+Adding one is deliberately small: a form, a server action, an insert. A version
+of it exists upstream, so this is extraction rather than design.
 
-### OTP verification — not started
+The reason it was not extracted is that a contact form worth shipping needs a
+spam defence and a consent checkbox, and both are decisions a site owner should
+make rather than inherit from a template.
 
-No OTP anywhere: not email, not SMS, not WhatsApp. It is listed because it is
-the natural next step for the contact form, and because two dependencies it
-would rest on are themselves untested here:
+### OTP verification — built upstream, not here
 
-- **Email delivery** — no Resend, SendGrid or SMTP integration exists
-- **WhatsApp** — see below
+No OTP in this repository: not email, not SMS, not WhatsApp.
 
-Neither has been tested end to end, so treat any OTP plan as resting on two
-untested legs.
+It **is** built upstream — phone verification and account-deletion confirmation,
+both over WhatsApp — so the pattern is proven rather than theoretical. See
+"Built upstream" below for what porting it involves, and note that it inherits
+WhatsApp's fragility: a suspended WABA number cannot deliver a code, so an OTP
+flow with no second channel locks people out of their own accounts.
 
 ### Services — no table, no pages
 
@@ -59,50 +59,79 @@ CMS sections, careers and CRM are; services are not. Adding it is the worked
 example in `feature-intake` → `feature-schema` if you want to see the workflow
 on something real.
 
-## WIP — schema exists, integration does not
+## Built upstream, not yet extracted
 
-These have tables and capabilities in the database, and **no code yet**. The
-data model is designed; the wiring is the work.
+This template was extracted from a production site, and the extraction stopped
+at the generic parts. The integrations below are **written, deployed and
+running there** — they are absent here because each is entangled with one
+business's accounts, copy and compliance decisions, not because they are
+unsolved.
 
-### WhatsApp Business
+Listing them matters for two reasons: you know the path exists rather than
+guessing, and you know what you are signing up for if you want it.
 
-`whatsapp_conversations` and `whatsapp_messages` exist, with roles
-(`support_bot_text`, `support_bot_voice`, `support_human`) already defined in
-`role_capabilities`. A bot and a human can hold different capabilities over the
-same conversation — that part is modelled.
+| | what exists upstream | why it is not here |
+|---|---|---|
+| **GA4** | a `<GA4>` component plus a reporting client using a GCP service account | tied to one property ID and one service account |
+| **Google Search Console** | Search Console Data API client, URL inspection, an SEO admin screen | reuses the *same* service account as GA4; needs per-site access grants |
+| **IndexNow** (Bing, Yandex) | fire-and-forget ping on publish, **no secrets at all** | the simplest to port — see below |
+| **WhatsApp Business** | webhook, conversation resolution, OTP verification, deletion verification | one WABA, one phone number, template approvals |
+| **OTP** | phone verification and account-deletion confirmation over WhatsApp | depends on WhatsApp above |
+| **Razorpay** | checkout quote and order, webhook, invoice generation | one merchant account, and real money |
+| **Transactional email** | Resend | one domain, one verified sender |
+| **Telegram** | webhook for operator notifications | one bot |
+| **Notion sync**, **n8n relays**, **scheduled cron** | publish scheduling, deletion grace purge, blog and comment relays | operational plumbing, one workspace |
 
-Missing: the webhook route, Graph API calls, template management, the
-verification handshake.
+### Start with IndexNow
 
-**One warning from experience, because it is expensive to learn late.** WABA
-accounts get suspended, sometimes without a clear reason, and a suspended number
-cannot receive or reply. Do not build a lead-capture flow whose only path is
-WhatsApp. Keep email or a form working alongside it.
+Of that list it is the one worth porting first, and it takes an afternoon.
 
-When you implement it: `WHATSAPP_TOKEN` and `WHATSAPP_VERIFY_TOKEN` are
-**secrets** and belong in the environment. The phone-number ID, display number
-and API version are configuration and can live in the database — the distinction
-matters because anything the site publishes to a browser must not contain a
-token.
+IndexNow is the protocol Bing and Yandex consume to crawl a changed URL almost
+immediately rather than waiting for a scheduled crawl. It needs **no OAuth, no
+service account and no secrets** — authentication is "does this key file resolve
+on your own domain", so the key is served as a public `.txt` and can be
+hardcoded.
 
-### Analytics — GA4, Meta Pixel, GTM
+Google does not participate. For Google you have GSC's manual *Request
+Indexing* or sitemap resubmission, which is why GSC is a separate, heavier
+integration.
 
-**None of this is implemented.** No `gtag`, no `fbq`, no GTM container.
+Implement it fire-and-forget: never throw, so a slow or unreachable endpoint can
+never block the publish it is reporting.
 
-It is on the list rather than done because doing it properly means consent
-first: a pixel that fires before the visitor agrees is a problem in several
+### Then GA4 and Search Console together
+
+They share one GCP service account, which is the non-obvious part worth knowing
+before you start: access is granted **twice and separately** — GCP IAM for the
+project, then the GA4 property's own Access Management, then Search Console's
+own Users and Permissions. Three grants, one identity. Missing the second or
+third produces a working client that returns empty data, which reads like a bug
+in your code.
+
+### WhatsApp, with the warning first
+
+WABA accounts get suspended, sometimes without a clear reason, and a suspended
+number can neither receive nor reply. **Never make WhatsApp the only path for
+lead capture or verification** — keep email or a form working alongside it.
+
+When you wire it: `WHATSAPP_TOKEN` and `WHATSAPP_VERIFY_TOKEN` are **secrets**
+and belong in the environment. The phone-number ID, display number and API
+version are configuration and can live in the database. The distinction matters
+because anything the site publishes to a browser must never contain a token.
+
+### Analytics needs consent before it needs code
+
+A pixel that fires before the visitor agrees is a problem in several
 jurisdictions and an own goal in all of them. The right order is a consent
 mechanism, then tags conditional on it, then server-side events if you need
-accuracy.
-
-### Payments, transactional email
-
-Not implemented, and no tables. Add the provider you actually use.
+accuracy. That ordering is why analytics is a bigger job than dropping in a
+script tag.
 
 ## Not started
 
-- **Public contact form**, and therefore OTP — see above
-- **Services catalogue** — no table
+- **Public contact form** — the table, masking view and admin screen are here;
+  the form that writes into one is not. Built upstream.
+- **Services catalogue** — no table, and none upstream either
 - **Admin authentication** — `/admin/*` is currently open. See
   [BLOCKERS.md](BLOCKERS.md) §3. This is the one that blocks a public deploy.
 - **Browser tests** — no Puppeteer or Playwright. The `testing-browser` skill
@@ -113,10 +142,14 @@ Not implemented, and no tables. Add the provider you actually use.
 
 ## Why the honesty
 
-A template that claims integrations it does not have costs you an afternoon
+A template that claims integrations it does not ship costs you an afternoon
 discovering it, and then you distrust everything else in the README — including
 the parts that are true and tested.
 
-The permission model here is real and you can verify it in about ten minutes.
-That claim is worth more than a longer feature list you would have to check one
-by one.
+So the distinction is kept sharp throughout: **built here** means you can run it
+today, **built upstream** means the code exists and has run in production but
+you will be porting it, and **not started** means nobody has done it.
+
+The permission model is in the first category, and you can verify it in about
+ten minutes with `tests/e2e/mcp.sh`. That single checkable claim is worth more
+than a longer feature list you would have to audit line by line.
