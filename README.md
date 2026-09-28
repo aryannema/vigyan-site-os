@@ -79,10 +79,29 @@ permission-matrix.test.ts     every role × resource × action
 perform-action.test.ts        the write path and its audit guarantee
 pii-masking.test.ts           masking holds below the UI
 adversarial-findings.test.ts  regression tests for attempted bypasses
+mcp-auth.test.ts              token verification, both type-confusion directions
+e2e/mcp.sh                    24 assertions against a RUNNING server + database
 ```
 
 That last file is the interesting one: each test is a way someone tried to reach
 around the permission model, kept so it cannot come back.
+
+The end-to-end suite proves the pieces are actually connected. Same endpoint,
+same tool, two different identities:
+
+```
+editor → post created, audited, and the audit names the JWT subject
+viewer → "not permitted to create on blog", nothing written
+```
+
+The decision is made by Postgres, not by the route — which is the claim this
+whole repository rests on, now measured rather than asserted. See
+[tests/README.md](tests/README.md) to run it.
+
+Browser testing (functional, accessibility, contrast, responsive, visual) is
+**not** written yet. The `testing-browser` skill describes how to add it,
+including asserting brand by shape rather than by hex value so the tests survive
+a rebrand.
 
 ---
 

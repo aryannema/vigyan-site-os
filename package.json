@@ -11,7 +11,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "mcp:token": "node scripts/mcp-token.mjs"
+    "mcp:token": "node scripts/mcp-token.mjs",
+    "test:e2e": "bash tests/e2e/mcp.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
