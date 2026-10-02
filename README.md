@@ -113,6 +113,7 @@ Everything a person must do (accounts, domain, payment KYC) is listed step by st
 |---|---|
 | [docs/SETUP.md](docs/SETUP.md) | New site, start to finish: the manual part, then the agentic part |
 | [docs/AGENT_MCP.md](docs/AGENT_MCP.md) | The two MCP layers and how agents use them |
+| [docs/AGENT_MEMORY_SHARING.md](docs/AGENT_MEMORY_SHARING.md) | Share what agents remember with Cowork and claude.ai (`pnpm agents:memory`) |
 | [AGENTS.md](AGENTS.md) | The rules every coding agent reads first |
 | [docs/INDEX.md](docs/INDEX.md) | Every other doc |
 

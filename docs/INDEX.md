@@ -3,6 +3,7 @@
 ## Start here
 - [SETUP.md](SETUP.md) — a new site, start to finish: the manual part (accounts, `pnpm bootstrap`, branding), then the agentic part
 - [AGENT_MCP.md](AGENT_MCP.md) — the two MCP layers: infrastructure (build and operate) vs the site MCP (run the built site)
+- [AGENT_MEMORY_SHARING.md](AGENT_MEMORY_SHARING.md) — share agent memory with Cowork and claude.ai (`pnpm agents:memory`)
 - [../AGENTS.md](../AGENTS.md) — rules every coding agent reads before touching the code
 
 ## Building

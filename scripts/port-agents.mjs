@@ -193,9 +193,25 @@ function installUser(mcp) {
   cur = cur.replace(re, '\n');
   // A server name already defined by hand elsewhere wins; skip it rather than duplicate the table.
   const taken = new Set([...cur.matchAll(/^\[mcp_servers\.([^\].]+)\]/gm)].map((m) => m[1]));
-  const blocks = mcp.codexToml.split(/\n(?=\[mcp_servers\.)/).filter((b) => !taken.has(/\[mcp_servers\.([^\]]+)\]/.exec(b)?.[1]));
+  // OAuth servers Codex reports as "Not logged in" fail on every start; write them switched off
+  // until `codex mcp login <name>` (re-run --install-user afterwards to switch them on).
+  let notLoggedIn = new Set();
+  try {
+    const out = execFileSync('codex', ['mcp', 'list'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    notLoggedIn = new Set(out.split('\n').filter((l) => /Not logged in\s*$/.test(l)).map((l) => l.trim().split(/\s+/)[0]));
+  } catch { /* codex missing: leave as is */ }
+  const oauth = new Set(mcp.servers.filter(([, sv]) => sv.auth === 'oauth').map(([n]) => n));
+  const blocks = mcp.codexToml.split(/\n(?=\[mcp_servers\.)/)
+    .filter((b) => !taken.has(/\[mcp_servers\.([^\]]+)\]/.exec(b)?.[1]))
+    .map((b) => {
+      const n = /\[mcp_servers\.([^\]]+)\]/.exec(b)?.[1];
+      return n && oauth.has(n) && notLoggedIn.has(n)
+        ? b.replace(/^(\[mcp_servers\.[^\]]+\])/, `$1\n# not logged in: run \`codex mcp login ${n}\`, then pnpm agents:port --install-user\nenabled = false`)
+        : b;
+    });
+  const off = blocks.filter((b) => /\nenabled = false/.test(b)).length;
   writeFileSync(cfg, `${cur.trimEnd()}\n\n${begin}\n${blocks.join('\n').trim()}\n${end}\n`);
-  console.log(`  codex: ${blocks.length} servers in ${cfg}${taken.size ? ` (kept your own: ${[...taken].filter((t) => mcp.names.includes(t)).join(', ') || 'none clashing'})` : ''}`);
+  console.log(`  codex: ${blocks.length} servers in ${cfg}${off ? ` (${off} OAuth server(s) off until \`codex mcp login\`)` : ''}${taken.size ? ` (kept your own: ${[...taken].filter((t) => mcp.names.includes(t)).join(', ') || 'none clashing'})` : ''}`);
   let agyOk = 0;
   for (const [n, s] of Object.entries(mcp.agy.mcpServers)) {
     const argv = s.serverUrl ? ['mcp', 'add', n, s.serverUrl] : ['mcp', 'add', n, '--', s.command, ...s.args];

@@ -22,7 +22,8 @@
     "bootstrap": "node scripts/bootstrap.mjs",
     "agents:port": "node scripts/port-agents.mjs",
     "agents:check": "node scripts/port-agents.mjs --check",
-    "template:export": "node scripts/template-export.mjs"
+    "template:export": "node scripts/template-export.mjs",
+    "agents:memory": "node scripts/agent-memory.mjs"
   },
   "keywords": [],
   "author": "",
