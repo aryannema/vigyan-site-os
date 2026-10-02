@@ -6,7 +6,7 @@
 -- brand strings, no sample rows. Every table here is a container; the contents
 -- come from the deployer.
 --
--- Ported (generalised) from the upstream production site's migrations:
+-- Ported (generalised) from site-os's supabase/migrations:
 --   000_base_schema.sql   -> site_content, content_history, posts,
 --                            contact_inquiries, mcp_audit_log, user_entitlements
 --   002_careers.sql       -> job_openings
@@ -95,7 +95,7 @@ CREATE INDEX IF NOT EXISTS contact_inquiries_created_idx
 
 
 -- ── 5. mcp_audit_log — legacy MCP-tool-call audit trail ──────────────────────
--- Kept for backward compatibility with the upstream site's existing MCP route.
+-- Kept for backward compatibility with site-os's existing MCP route.
 -- SUPERSEDED BY public.action_audit_log (see 004_audit_by_construction.sql),
 -- which is the audit trail for every write path, not just MCP tool calls.
 -- New code should write action_audit_log via perform_action().
@@ -120,7 +120,7 @@ ALTER TABLE public.mcp_audit_log ADD COLUMN IF NOT EXISTS changed_by text;
 -- the real shape (price, currency, order reference, expiry) is Phase 3 payments
 -- design work and is NOT being guessed at here.
 --
--- DIVERGENCE FROM SOURCE: the upstream reconstructed table has `user_id`,
+-- DIVERGENCE FROM SOURCE: site-os's reconstructed table has `user_id`,
 -- but its self-read RLS policy matched on a non-existent `email` column. Here
 -- the table carries `user_id uuid` with a real FK to auth.users and the policy
 -- matches on `user_id = auth.uid()`, which is internally consistent.

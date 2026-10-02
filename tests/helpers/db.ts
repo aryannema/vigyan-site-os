@@ -1,5 +1,5 @@
 /**
- * Integration-test harness for the vigyan-site-os permission system.
+ * Integration-test harness for the site-os permission system.
  *
  * These tests run against the REAL local Postgres database named in
  * `DATABASE_URL` (see `.env.local`). Nothing is mocked: RLS, SECURITY DEFINER
@@ -36,7 +36,7 @@
  *     which is also what clears an identity established outside a transaction.
  *
  * ── Why the role switch matters ─────────────────────────────────────────────
- * `DATABASE_URL` connects as `vigyan_site_os`, which OWNS every table. A table
+ * `DATABASE_URL` connects as the connection owner, which OWNS every table. A table
  * owner bypasses its own RLS (003 §7 deliberately does not use FORCE ROW LEVEL
  * SECURITY). Any test that means to exercise a POLICY must therefore run under
  * `SET LOCAL ROLE authenticated`; tests that only exercise a function's own
@@ -48,7 +48,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, afterEach, expect } from 'vitest';
-import type { Role } from '../../types/schema';
+import type { Role } from '@/types/schema';
 
 const { Client } = pg;
 
@@ -149,7 +149,7 @@ export class TestDb {
 
   /* ── identity ───────────────────────────────────────────────────────────*/
 
-  /** Drop back to the connection owner (`vigyan_site_os`), which bypasses RLS. */
+  /** Drop back to the connection owner (the connection owner), which bypasses RLS. */
   async asOwner(): Promise<void> {
     await this.client.query('RESET ROLE');
   }
@@ -235,7 +235,7 @@ export class TestDb {
    */
   async createUser(role: Role | null): Promise<{ id: string; email: string }> {
     await this.asOwner();
-    const email = `${this.label}-${role ?? 'norole'}-${randomUUID()}@vigyan-site-os.test`;
+    const email = `${this.label}-${role ?? 'norole'}-${randomUUID()}@yoursite.test`;
     const { id } = await this.one<{ id: string }>(
       'INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), $1) RETURNING id',
       [email],

@@ -1,0 +1,103 @@
+{
+  "$comment": "MCP servers bundled with this site for ANY coding agent. Rendered into each agent's project config by `pnpm agents:port` (Claude .mcp.json, Codex .codex/config.toml, OpenCode opencode.json, Antigravity .agents/mcp_config.json). No secret values: bearer tokens are ENV VAR NAMES resolved by the agent at runtime; OAuth servers prompt a browser login on first use. default_profiles = what THIS site uses (template ships ['core']); --profile overrides once.",
+  "version": 1,
+  "default_profiles": [
+    "core"
+  ],
+  "profiles": {
+    "core": [
+      "site",
+      "cloudflare-api",
+      "cloudflare-docs",
+      "github"
+    ],
+    "coolify": [
+      "coolify"
+    ],
+    "vercel": [
+      "vercel"
+    ],
+    "supabase-cloud": [
+      "supabase"
+    ],
+    "whatsapp": [
+      "whatsapp-business-tools"
+    ],
+    "social": [
+      "postiz"
+    ],
+    "automation": [
+      "n8n"
+    ]
+  },
+  "servers": {
+    "site": {
+      "description": "This site's MCP server (/api/mcp, Streamable HTTP): page sections, blog, jobs, short links, products and prices, settings and flags. Auth: Bearer SITE_MCP_KEY (= the site's MCP_SECRET_KEY) + X-Caller-Label.",
+      "transport": "http",
+      "url": "${SITE_URL}/api/mcp",
+      "bearer_env": "SITE_MCP_KEY",
+      "headers_env": {
+        "X-Caller-Label": "MCP_CALLER_LABEL"
+      }
+    },
+    "cloudflare-api": {
+      "description": "Cloudflare zone/account API: cache rules, purge, DNS, redirects.",
+      "transport": "http",
+      "url": "https://mcp.cloudflare.com/mcp",
+      "auth": "oauth"
+    },
+    "cloudflare-docs": {
+      "description": "Cloudflare documentation search.",
+      "transport": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "github": {
+      "description": "GitHub repos, issues, PRs, Actions.",
+      "transport": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "bearer_env": "GITHUB_PERSONAL_ACCESS_TOKEN"
+    },
+    "coolify": {
+      "description": "Coolify v4: apps, deployments, logs, env vars.",
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@masonator/coolify-mcp"
+      ],
+      "env_passthrough": [
+        "COOLIFY_BASE_URL",
+        "COOLIFY_ACCESS_TOKEN"
+      ]
+    },
+    "vercel": {
+      "description": "Vercel projects, deployments, logs, env.",
+      "transport": "http",
+      "url": "https://mcp.vercel.com",
+      "auth": "oauth"
+    },
+    "supabase": {
+      "description": "Supabase cloud: projects, SQL, logs, edge functions.",
+      "transport": "http",
+      "url": "https://mcp.supabase.com/mcp",
+      "auth": "oauth"
+    },
+    "whatsapp-business-tools": {
+      "description": "Meta's WhatsApp Business Tools MCP: numbers, templates, webhooks.",
+      "transport": "http",
+      "url": "https://mcp.facebook.com/whatsapp_business_tools",
+      "auth": "oauth"
+    },
+    "postiz": {
+      "description": "Postiz (self-hosted social scheduler) MCP: create and schedule posts across connected social accounts. Key = Postiz Settings > Public API.",
+      "transport": "http",
+      "url": "${POSTIZ_BACKEND_URL}/mcp/${POSTIZ_API_KEY}"
+    },
+    "n8n": {
+      "description": "n8n instance MCP: list and run workflows exposed to MCP. Token = n8n Settings > Instance-level MCP.",
+      "transport": "http",
+      "url": "${N8N_URL}/mcp-server/http",
+      "bearer_env": "N8N_MCP_TOKEN"
+    }
+  }
+}

@@ -1,9 +1,9 @@
 ---
 name: seo-optimize
-description: Use when auditing or improving your domain's SEO/indexing — Google Search Console issues (404s, sitemap, "discovered not indexed"), on-page checks (title/meta/canonical/OG/H1/internal links), or wiring search-engine notification (IndexNow/GSC/Bing/Yandex). Also use when the operator pastes GSC findings and asks to fix + validate.
+description: Use when auditing or improving example.com's SEO/indexing — Google Search Console issues (404s, sitemap, "discovered not indexed"), on-page checks (title/meta/canonical/OG/H1/internal links), or wiring search-engine notification (IndexNow/GSC/Bing/Yandex). Also use when the operator pastes GSC findings and asks to fix + validate.
 ---
 
-# SEO audit & indexing pipeline — this site
+# SEO audit & indexing pipeline — site-os
 
 Built from the 2026-09-08 session that fixed a legacy `/home` 404, corrected the
 footer/JSON-LD legal entity, audited the 9 marketing pages GSC flagged as
@@ -30,18 +30,18 @@ For each URL:
    - `<meta name="description">` — present, unique, under ~160 chars,
      page-specific (not the homepage's generic description).
    - Exactly one `<h1>`; H2/H3 nest without skipping levels.
-   - `<link rel="canonical">` — **this app does not currently emit one
-     anywhere** (checked via `grep -rn "canonical\|alternates" src/app`).
-     Re-check this each audit; it's the single highest-leverage fix once
-     addressed, since it also helps the apex/www/http canonical-host
-     confusion GSC flags separately.
+   - `<link rel="canonical">` — **now emitted** on blog posts (per-post, via
+     `generateMetadata`) and on the four pages using `pageMetadata()`, always
+     ABSOLUTE, which is what fixes the apex/www and tracking-parameter
+     duplicates GSC flags separately. Re-check coverage each audit: pages still
+     on a static `metadata` export may emit a relative canonical or none.
    - `og:title`/`og:description`/`og:image` — present but currently
      **static site-wide**, defined once via `metadata.openGraph` in
      `src/app/layout.tsx` (separate from that same file's
      `organizationJsonLd` block, which is JSON-LD, not OG tags). No page
      currently overrides it.
    - Image `alt` text on meaningful images. The two global icon images
-     (header logo `alt=""`, footer badge `alt="your brand"`) are correct as
+     (header logo `alt=""`, footer badge `alt="YourSite"`) are correct as
      shipped — decorative icon next to visible brand text is the right
      pattern, don't flag it.
 4. Internal linking — grep, don't assume:
@@ -59,6 +59,41 @@ For each URL:
    `job_openings` has zero `status='open'` rows — the code isn't broken,
    the data is empty).
 
+## 1.5 Where metadata now lives (changed 2026-09-28)
+
+Per-page metadata is no longer only a `.tsx` constant. `src/lib/page-seo.ts`
+exposes `pageMetadata(path, fallback)`, which reads
+`site_content['page_seo'][path]` and falls back to the hardcoded value.
+
+Why it matters for this process: **SEO copy is tuned against GSC data.** A
+title with impressions but no clicks needs rewording; a description Google keeps
+replacing needs shortening. Hardcoded, each iteration is a deploy — so in
+practice it never happens. Editable, the loop closes.
+
+```ts
+export async function generateMetadata(): Promise<Metadata> {
+  return pageMetadata('/privacy', {
+    title: 'Privacy Policy',
+    description: 'How … collects, uses, and protects your data.',
+  });
+}
+```
+
+Three properties to preserve when extending this to more pages:
+
+- **No extra query.** `pageMetadata` goes through `getSectionContent`, which
+  uses `loadAllContent` — already fetching every `site_content` row once per
+  request. The SEO row rides along.
+- **The fallback is mandatory.** An empty table or unreachable DB must never
+  strip a title; a crawl landing during an outage would record the blank
+  version, outliving the outage.
+- **`noindex` is per-page and DB-driven**, so a stub like `/voice` can be kept
+  out of the index and flipped when it ships, without a deploy.
+
+Applied so far: `/privacy`, `/terms`, `/data-deletion`, `/voice`. Blog posts use
+their own `generateMetadata` (per-post, from the row). Everything else still
+uses a static export — migrate as you touch them.
+
 ## 2. Known bug class: missing per-page `metadata` export
 
 `src/app/(marketing)/about/page.tsx`, `blog/page.tsx`, `contact/page.tsx`,
@@ -66,14 +101,14 @@ For each URL:
 `src/app/layout.tsx` and `src/app/(marketing)/layout.tsx` independently
 define `title: { default: siteConfig.name, template: '%s | ${siteConfig.name}' }`.
 With no page override, the child layout's default gets fed through the
-template again, producing the literal rendered title `"your brand | your brand"`
+template again, producing the literal rendered title `"YourSite | YourSite"`
 plus the homepage's generic description — a real duplicate-title/description
 bug across 4 live URLs, not just an SEO nicety. Fix pattern (see
 `careers/page.tsx` for a correct example already in the codebase):
 
 ```ts
 export const metadata: Metadata = {
-  title: 'Page Topic',                    // becomes "Page Topic | your brand"
+  title: 'Page Topic',                    // becomes "Page Topic | YourSite"
   description: 'Specific, <160-char description of THIS page.',
 };
 ```
@@ -122,6 +157,78 @@ IndexNow's coverage (Bing already consumes it) turns out insufficient.
 - Always confirm the *live* rendered output, not just the source diff —
   Next.js metadata resolution (title templates especially) can produce
   surprises that only show up in actual HTML.
-- Check `gh api repos/manishknema/this site/hooks/<id>/deliveries` to
+- Check `gh api repos/your-org/site-os/hooks/<id>/deliveries` to
   confirm the GitHub→Coolify webhook actually fired (200) before waiting on
   a deploy that never started.
+
+## 5. What only the operator can do
+
+Everything below needs a human with account access. None of it is automatable
+from here, and each blocks a piece of automation that is already written.
+
+### 5.1 Grant the service account WRITE access in Search Console
+
+The reporting client uses `webmasters.readonly`. `resubmitSitemap()` in
+`src/lib/search-ping.ts` needs read-write, and fails with a 403 that reads like
+an auth bug rather than a missing grant.
+
+1. Google Cloud Console → APIs & Services → Library → enable **Google Search
+   Console API** and **Web Search Indexing API**
+2. Search Console → Settings → Users and permissions → Add user
+3. Paste the service account's `…@….iam.gserviceaccount.com`
+4. Permission: **Owner** — not Full. Owner is required for programmatic
+   indexing and URL inspection.
+
+Until this is done: sitemap resubmission and URL inspection both fail.
+
+### 5.2 Request indexing by hand, once
+
+For ordinary pages there is **no API**. The Indexing API is restricted to
+`JobPosting` and `BroadcastEvent`; using it elsewhere is unsupported and risks
+the account. Google has also stated `llms.txt` has no effect on Search, either
+way.
+
+So after any fix that changes what a crawler sees — a title, a canonical, a new
+sitemap — take the three or four most valuable URLs into **GSC → URL Inspection
+→ Request Indexing**. It is the fastest confirmation that a fix worked, and it
+is human-only by design.
+
+### 5.3 Decide the internal links
+
+A page reachable only from `sitemap.ts` is an orphan, and a sitemap entry is a
+suggestion, not a crawl. `/privacy`, `/terms`, `/data-deletion` and `/voice`
+have no inbound links.
+
+This is an editorial decision, not a technical one: where should each page be
+linked from, and does it deserve a link at all? A footer link for the legal
+pages is usually right. `/voice` is currently `noindex` because it is a stub.
+
+### 5.4 Bing Webmaster API key (optional)
+
+IndexNow already covers Bing and needs no auth. A Bing Webmaster key adds
+`SubmitUrl`/`SubmitUrlBatch` and sitemap submission. Settings → API access, flat
+key, no OAuth. Only worth it if IndexNow coverage proves insufficient.
+
+### 5.5 Verify a deploy actually happened
+
+Coolify deploys are not instant, and a push that never triggered a build looks
+identical to a fix that did not work.
+
+```bash
+gh api repos/<owner>/<repo>/hooks/<id>/deliveries      # did the webhook fire 200?
+until curl -s https://<domain>/sitemap.xml | grep -q '<loc>.*blog/'; do sleep 5; done
+```
+
+## 6. Automation status
+
+| lever | who | status |
+|---|---|---|
+| Sitemap includes posts/products/jobs | code | done, hourly revalidate |
+| Sitemap refreshed on publish | code | done, `revalidatePath('/sitemap.xml')` |
+| Per-post metadata + canonical | code | done |
+| Page metadata editable from DB | code | done, `page_seo` |
+| IndexNow ping (Bing, Yandex) | code | done for blog + jobs; products wired |
+| Sitemap resubmission to GSC | code | written, **blocked on 5.1** |
+| JobPosting indexing ping | code | written, **blocked on 5.1** |
+| Request Indexing for ordinary pages | **human** | no API exists |
+| Internal linking | **human** | editorial |

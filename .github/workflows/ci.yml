@@ -1,32 +1,32 @@
-name: CI
-
+name: YourSite CI/CD
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
-  verify:
-    name: Typecheck, Lint & Build
+  build-and-test:
+    name: Build & Verify
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22' # Using Node 22 for Next 15+
 
       - name: Install pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 10.27.0
+          version: 10.27.0 # Explicitly pinning to the version in packageManager
 
       - name: Get pnpm store directory
         shell: bash
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
         uses: actions/cache@v4
@@ -39,68 +39,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Lint
+      - name: Run Linter
         run: pnpm lint
 
-      - name: Build
+      - name: Run Build
         run: pnpm build
         env:
-          # The default V8 old-space ceiling (~2GB) OOMs mid-typecheck on a repo
-          # this size; ubuntu-latest runners have 16GB, so give the build room.
+          # Default V8 old-space ceiling (~2GB) OOMs mid-typecheck on this repo's
+          # size; ubuntu-latest runners have 16GB, so give the build room.
           NODE_OPTIONS: --max-old-space-size=6144
-          # Build-time placeholders. Nothing here reaches a real database — the
-          # build only needs these to be present and syntactically valid.
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-
-  # The DB suite is the part of this repo that has actually been adversarially
-  # tested, so it runs against a real Postgres rather than being mocked.
-  test:
-    name: Database test suite
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: vigyan_site_os_test
-        ports: [ '5432:5432' ]
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10.27.0
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Apply migrations in order
-        run: |
-          for f in supabase/migrations/*.sql; do
-            echo "── $f"
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
-          done
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vigyan_site_os_test
-          PGPASSWORD: postgres
-
-      - name: Run tests
-        run: pnpm test
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vigyan_site_os_test

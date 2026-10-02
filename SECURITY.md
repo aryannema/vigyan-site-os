@@ -1,21 +1,14 @@
 # Security
 
-## Known, by design, right now
+## Secrets that are passwords
 
-**`/admin/*` is unauthenticated.** There is no auth layer wired up yet
-([BLOCKERS.md](BLOCKERS.md) §3). Anyone who can reach those routes acts as `ADMIN_ACTOR`.
-
-This is not a vulnerability report — it is stated in the README, and it is the single largest
-reason this project is marked early. Do not expose an instance to the internet until you have
-put authentication in front of it.
-
-Two related consequences worth being explicit about:
-
-- **`MCP_SECRET_KEY` is a password.** The MCP endpoint maps that bearer token to the identity
-  in `MCP_SERVICE_ACTOR`, and that identity's role decides what the token can do. Give it the
-  narrowest role that works.
+- **`MCP_SECRET_KEY` is a password.** The MCP endpoint (`/api/mcp`) maps that bearer token to
+  the identity in `MCP_SERVICE_ACTOR`, and that identity's role decides what the token can do.
+  Give it the narrowest role that works, and rotate it from Admin > Settings > Keys.
 - **`SUPABASE_SERVICE_ROLE_KEY` bypasses RLS.** Server-side only. If it reaches a browser,
   every guarantee in the schema is gone.
+- **Admin access** is Supabase sign-in plus a role in the database. `BOOTSTRAP_ADMIN_EMAILS`
+  promotes the first sign-in to admin; remove it once that is done.
 
 ## Reporting a vulnerability
 
@@ -47,7 +40,6 @@ Interesting, because it breaks a guarantee the project actually makes:
 
 Already known, so not a finding:
 
-- Reaching `/admin/*` without credentials (§3 above).
 - Anything requiring `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, or `MCP_SECRET_KEY` — those
   are trusted secrets, and holding one is already game over by design.
 

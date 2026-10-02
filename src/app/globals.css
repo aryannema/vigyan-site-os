@@ -1,0 +1,551 @@
+/* Brand revision 4 tokens. MUST precede the @tailwind directives: in Tailwind
+   v3 a plain @import has to come first (PostCSS hoists it anyway, so putting it
+   here keeps the source honest). This file is the SINGLE source for every brand
+   colour, the fixed strings and the type stack — do not restate any of them
+   below. See docs/brand/DESIGN-SYSTEM.md. */
+@import "../../docs/brand/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   YourSite — app-level tokens, revision 4.
+
+   Brand primitives (saffron/green/paper/ink/deep/hairlines), the semantic
+   aliases (--bg, --text-*, --primary, --accent, --border, --focus-ring), the
+   radius/rhythm scale and the fixed --vb-tagline/--vb-label strings all come
+   from docs/brand/tokens.css, imported above. Only tokens that file does NOT
+   define live here, plus the next/font bridges.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* ---- next/font bridges -----------------------------------------------
+     tokens.css declares the families by literal name (Newsreader, Public Sans,
+     …) so the pack works in any project. Here they are re-pointed at the
+     next/font/google CSS variables from src/app/layout.tsx, which is what
+     actually self-hosts and preloads the files. Same families, same order --
+     only the loading mechanism differs. */
+  --font-display:  var(--font-newsreader), Georgia, serif;
+  --font-body:     var(--font-public-sans), 'Helvetica Neue', Arial, sans-serif;
+  --font-logotype: var(--font-public-sans), 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:     var(--font-jetbrains-mono), Menlo, Consolas, monospace;
+  --font-deva:     var(--font-noto-deva), Mangal, sans-serif;
+  /* Back-compat: existing markup uses font-sans / var(--font-sans) widely. */
+  --font-sans:     var(--font-body);
+
+  /* ---- Extra neutrals not in the pack ----------------------------------- */
+  --vb-green-300: #86efac;
+  --vb-green-400: #4ade80;
+
+  /* ---- Radii ------------------------------------------------------------
+     tokens.css sets the brand scale (sm 8 / md 12 / lg 20 / xl 28). Only the
+     two ends the pack does not define are added here. */
+  --radius-xs: 6px;
+  --radius-2xl: 36px;
+  --radius-pill: 999px;
+
+  /* ---- Shadows ---------------------------------------------------------- */
+  --shadow-xs: 0 1px 2px rgba(28, 24, 20, 0.06);
+  --shadow-sm: 0 2px 8px rgba(28, 24, 20, 0.06);
+  --shadow-md: 0 8px 24px rgba(28, 24, 20, 0.08);
+  --shadow-lg: 0 20px 48px rgba(28, 24, 20, 0.10);
+  --glow-saffron: 0 0 0 1px rgba(245,158,11,0.18), 0 12px 32px rgba(245,158,11,0.18);
+  --glow-green:   0 0 0 1px rgba(34,197,94,0.16),  0 12px 32px rgba(21,128,61,0.16);
+
+  /* ---- Motion -----------------------------------------------------------
+     tokens.css defines --ease (the brand curve). --ease-out is kept as an
+     alias because existing markup references it widely. */
+  --ease-out: var(--ease);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 420ms;
+
+  /* ==== App-only semantic tokens (flip on .dark) =========================
+     --bg / --bg-alt / --surface-card / --text-strong / --text-body /
+     --text-muted / --primary / --primary-ink / --accent / --border /
+     --focus-ring all come from tokens.css. Listed here only: the extras this
+     app uses that the pack does not define. */
+  --bg-well:       var(--vb-paper-3);
+  --surface:       var(--vb-surface);
+
+  --text-faint:    var(--vb-ink-300);
+  --text-on-dark:  var(--text-on-deep);
+
+  --accent-ink:    var(--vb-green-700);
+
+  --border-strong: var(--vb-line-strong);
+  --border-faint:  var(--vb-line-faint);
+
+  --nav-bg:        rgba(250, 246, 238, 0.82);
+  --selection-bg:  rgba(245, 158, 11, 0.28);
+
+  /* ==== shadcn/ui bridge — reconciled from CLAUDE-BRIEF.md §2 ============
+     The brief ships these as a separate yoursite-shadcn-theme.css to be
+     imported above the @tailwind directives. They are merged HERE instead,
+     deliberately: this file already declared --background/--foreground/
+     --primary/--border/--ring equivalents, and the brief's own §1a warns
+     that "two sources of truth is the single most common way this install
+     breaks". One file, one definition, same resulting token contract. */
+
+  /* Radius scale (brief §2: controls 12px, cards 20px, feature panels 28px) */
+  --radius:         0.75rem;
+  --radius-card:    20px;
+  --radius-feature: 28px;
+
+  /* Chart series — saffron → green ramp */
+  --chart-1: #f59e0b;
+  --chart-2: #15803d;
+  --chart-3: #e8821a;
+  --chart-4: #22c55e;
+  --chart-5: #9a9182;
+
+  /* Sidebar block tokens. Brief §3 wants SAND (not white) as the sidebar
+     ground, with the active item lifting to a white surface. */
+  --sidebar:                    var(--vb-paper-2);
+  --sidebar-foreground:         var(--vb-ink-700);
+  --sidebar-primary:            var(--vb-saffron-500);
+  --sidebar-primary-foreground: var(--vb-ink-900);
+  --sidebar-accent:             var(--vb-surface);
+  --sidebar-accent-foreground:  var(--vb-ink-900);
+  --sidebar-border:             var(--vb-line);
+  --sidebar-ring:               var(--vb-saffron-500);
+
+  /* Warm overlay for dialog/sheet/drawer scrims (brief §3: never neutral black) */
+  --overlay: rgba(28, 24, 20, 0.42);
+}
+
+/* ---- Deep surface ------------------------------------------------------
+   Deep (#020617) is the EXCEPTION, never the default ground — it is used
+   where the frame is itself dark (docs/brand/DESIGN-SYSTEM.md §1).
+   Scoped to BOTH .dark (next-themes, whole document) and .vb-deep (a single
+   dark band on an ivory page: <section className="vb-deep">).
+   `.vb-dark` is kept purely as a deprecated alias so no existing markup
+   breaks mid-migration; prefer .vb-deep in new code. */
+.dark,
+.vb-deep,
+.vb-dark {
+  color-scheme: dark;
+
+  --bg:            var(--vb-deep);
+  --bg-alt:        #0b1120;
+  --bg-well:       var(--vb-deep-surface);
+  --surface:       var(--vb-deep-surface);
+  --surface-card:  var(--vb-deep-surface);
+
+  --text-strong:   var(--vb-paper);
+  --text-body:     var(--vb-mist-300);
+  --text-muted:    #94a3b8;
+  --text-faint:    #64748b;
+
+  --primary-ink:   var(--vb-saffron-400);
+  --accent:        var(--vb-green-500);
+  --accent-ink:    var(--vb-green-400);
+
+  --border:        var(--vb-line-on-deep);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-faint:  rgba(255, 255, 255, 0.05);
+
+  --nav-bg:        rgba(2, 6, 23, 0.82);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.50);
+
+  /* shadcn bridge, deep counterparts */
+  --sidebar:                    var(--vb-deep-surface);
+  --sidebar-foreground:         var(--vb-mist-300);
+  --sidebar-accent:             #172033;
+  --sidebar-accent-foreground:  #f8fafc;
+  --sidebar-border:             var(--vb-line-on-deep);
+  --overlay:                    rgba(2, 6, 23, 0.58);
+}
+
+/* A deep SECTION (as opposed to a .dark document) has to paint its own
+   ground -- the body background it sits on is still ivory. */
+.vb-deep,
+.vb-dark {
+  background: var(--bg);
+  color: var(--text-strong);
+}
+
+* { box-sizing: border-box; }
+
+/* ==== Brand typography, applied once globally ==========================
+   DESIGN-SYSTEM.md §5: Newsreader 600 for display (-0.02em, line-height
+   1.06), Public Sans for body, Newsreader italic for emphasis.
+
+   Set on the elements rather than per page so every heading inherits the
+   display face automatically -- pages keep their own size/weight utilities,
+   and only the family and tracking come from here. Tailwind's `font-sans`
+   utility on <body> still governs body copy. */
+@layer base {
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    line-height: 1.06;
+  }
+  h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  /* Emphasis is the tagline's voice: Newsreader italic, not a bolder sans. */
+  em, i, .vb-emphasis {
+    font-family: var(--font-display);
+    font-style: italic;
+  }
+  /* Every Devanagari run, even a single वि. Tracking is explicitly reset:
+     letter-spacing detaches the matras. +12% size per the spec. */
+  :lang(hi), :lang(sa), .deva, .font-deva {
+    font-family: var(--font-deva);
+    letter-spacing: normal;
+    font-size: 1.12em;
+    line-height: 1.75;
+  }
+}
+
+/* ==== Cross-cutting brand rules (CLAUDE-BRIEF.md §3) ====================
+   These are deliberately GLOBAL so components never need their own focus
+   or easing classes -- the brief explicitly says not to add per-component
+   focus:ring-2. */
+
+/* 1. Focus is a 3px saffron ring at 18%, never a blue browser outline. */
+:where(button, a, input, textarea, select, [role="button"], [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+  border-color: var(--vb-saffron-500);
+}
+
+/* 2. Cards opt into the signature saffron top rule that grows on hover. */
+.vb-card-accent { position: relative; overflow: hidden; }
+.vb-card-accent::before {
+  content: ""; position: absolute; inset: 0 auto auto 0;
+  height: 3px; width: 34px; background: var(--vb-saffron-500);
+  transition: width 200ms var(--ease-out);
+}
+.vb-card-accent:hover::before { width: 100%; }
+.vb-card-accent:hover {
+  border-color: rgba(245, 158, 11, 0.35);
+  box-shadow: var(--shadow-md);
+}
+
+/* 3. Motion is a confident settle, never a bounce. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  /* scroll-driven theme transition (homepage drives body bg via inline style) */
+  transition: background-color .7s var(--ease-in-out), color .7s var(--ease-in-out);
+}
+
+::selection { background: var(--selection-bg); color: var(--text-strong); }
+
+/* ==========================================================================
+   LIVE-SITE SCHEME — ported verbatim from `YourSite Live Site.html`.
+   These global classes constitute the shared design scheme across the site.
+   ========================================================================== */
+
+/* ---- Ambient glow layer (color shifts with theme) ---- */
+.ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.ambient .blob {
+  position: absolute; width: 62vw; height: 62vw; border-radius: 50%; filter: blur(90px);
+  transition: background-color .7s var(--ease-in-out), opacity .7s var(--ease-in-out), transform 1.2s var(--ease-in-out);
+}
+.ambient .b1 { top: -16vw; right: -12vw; background-color: rgba(245,158,11,.28); }
+.ambient .b2 { bottom: -22vw; left: -14vw; background-color: rgba(34,197,94,.14); }
+body[data-mode="light"] .blob { opacity: .4; }
+body[data-mode="dark"] .blob { opacity: .62; }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
+section { position: relative; z-index: 1; }
+
+/* ---- Header ---- */
+#hdr {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  transition: background-color .5s var(--ease-in-out), border-color .5s, color .5s;
+  border-bottom: 1px solid transparent;
+}
+#hdr.scrolled { background: rgba(250,246,238,.72); backdrop-filter: blur(16px); border-bottom-color: var(--vb-line); }
+#hdr.on-dark.scrolled { background: rgba(2,6,23,.6); border-bottom-color: rgba(255,255,255,.08); }
+.nav { display: flex; align-items: center; justify-content: space-between; height: 72px; gap: 24px; }
+.nav .logo { height: 32px; display: block; }
+.nav-links { display: flex; gap: 30px; align-items: center; }
+.nav-links a { font-size: 14px; font-weight: 600; color: var(--_navfg, var(--vb-ink-700)); opacity: .78; transition: opacity .2s, color .5s; }
+.nav-links a:hover { opacity: 1; }
+.nav-item { position: relative; display: flex; align-items: center; }
+.nav-item > a { display: inline-flex; align-items: center; gap: 5px; }
+.nav-caret { transition: transform .2s; }
+.nav-item:hover .nav-caret, .nav-item:focus-within .nav-caret { transform: rotate(180deg); }
+.nav-sub {
+  display: none; position: absolute; top: 100%; left: -14px; min-width: 220px; padding: 8px; margin-top: 10px;
+  flex-direction: column; gap: 2px; border-radius: var(--radius-md);
+  background: var(--vb-ivory, #faf6ee); border: 1px solid var(--vb-line); box-shadow: 0 12px 32px rgba(20,16,10,.14);
+}
+/* Bridges the 10px gap so the pointer can travel from the label to the panel. */
+.nav-sub::before { content: ""; position: absolute; left: 0; right: 0; top: -12px; height: 12px; }
+.nav-item:hover .nav-sub, .nav-item:focus-within .nav-sub { display: flex; }
+.nav-sub a { padding: 9px 12px; border-radius: 8px; opacity: 1; color: var(--vb-ink-700); white-space: nowrap; }
+.nav-sub a:hover { background: rgba(0,0,0,.05); color: var(--vb-saffron-600); }
+#hdr.on-dark .nav-sub { background: #0b1220; border-color: rgba(255,255,255,.1); }
+#hdr.on-dark .nav-sub a { color: #e7e2d8; }
+#hdr.on-dark .nav-sub a:hover { background: rgba(255,255,255,.08); }
+.nav-right { display: flex; align-items: center; gap: 18px; }
+.util { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--_navfg, var(--vb-ink-700)); opacity: .8; transition: color .5s; }
+.util:hover { opacity: 1; color: var(--vb-saffron-600); }
+.util svg { width: 16px; height: 16px; }
+/* Header CTA (STEP 8). Saffron with INK text, never white — white on saffron
+   fails contrast, which is why --on-primary is ink. Hidden below the mobile
+   breakpoint; the mobile panel carries its own "Book a call". */
+.nav-cta {
+  display: none;
+  align-items: center;
+  height: 38px;
+  padding: 0 18px;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: filter var(--dur-fast) var(--ease);
+}
+.nav-cta:hover { filter: brightness(1.04); }
+@media (min-width: 900px) { .nav-cta { display: inline-flex; } }
+#hdr.on-dark { --_navfg: #e7e2d8; }
+
+.mobile-menu-btn {
+  display: none; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border: none; background: transparent; cursor: pointer;
+  color: var(--_navfg, var(--vb-ink-700));
+}
+.mobile-menu-btn svg { width: 22px; height: 22px; }
+.mobile-nav-panel {
+  display: none;
+  position: fixed; top: 72px; left: 0; right: 0; bottom: 0; z-index: 99;
+  flex-direction: column; gap: 4px; padding: 20px 24px;
+  background: rgba(250,246,238,.98); backdrop-filter: blur(16px);
+  overflow-y: auto;
+}
+#hdr.on-dark .mobile-nav-panel { background: rgba(2,6,23,.98); }
+.mobile-nav-panel a {
+  font-size: 17px; font-weight: 600; color: var(--_navfg, var(--vb-ink-700));
+  padding: 14px 4px; border-bottom: 1px solid var(--vb-line);
+}
+#hdr.on-dark .mobile-nav-panel a { border-bottom-color: rgba(255,255,255,.08); }
+.mobile-nav-group { display: flex; flex-direction: column; }
+.mobile-nav-panel a.mobile-nav-child { font-size: 15px; font-weight: 500; padding: 10px 4px 10px 22px; opacity: .85; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-sans); font-weight: 700;
+  font-size: 14px; letter-spacing: -.01em; padding: 11px 20px; border-radius: var(--radius-md);
+  border: 1px solid transparent; cursor: pointer;
+  transition: transform .12s var(--ease-out), filter .2s, background .3s, color .3s, border-color .3s;
+}
+.btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.btn-primary { background: var(--vb-saffron-500); color: var(--vb-ink-900); box-shadow: 0 6px 18px rgba(245,158,11,.24); }
+.btn-ghost { background: transparent; color: var(--_navfg, var(--vb-ink-900)); border-color: var(--vb-line-strong); }
+#hdr.on-dark .btn-ghost { border-color: rgba(255,255,255,.22); }
+.btn-lg { padding: 15px 28px; font-size: 15px; border-radius: var(--radius-lg); }
+
+/* The brand label treatment (DESIGN-SYSTEM.md §3): JetBrains Mono 500,
+   uppercase, 0.28em, ALWAYS one line -- it shrinks rather than wraps, which
+   is why the size is a clamp() and white-space is nowrap. */
+.eyebrow {
+  font-family: var(--font-mono); font-weight: 500;
+  /* Sized so the 49-character label still fits on ONE line at 360px. At
+     0.28em tracking each character costs roughly 0.88em, so the full label is
+     about 43em wide -- at a 9.5px floor that is ~409px and would overflow a
+     360px viewport. Scaling by 2vw gives ~7.2px there (~310px, inside the
+     ~328px of usable width) and clamps to 12px from about 600px up. The spec
+     is explicit that the label shrinks rather than wraps. */
+  font-size: clamp(7px, 2vw, 12px);
+  letter-spacing: .28em; text-transform: uppercase; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 9px;
+  max-width: 100%;
+}
+.eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+
+/* ---- Hero ---- */
+/* This element carries BOTH .wrap and .hero classes (see HomeExperience.tsx)
+   -- .hero must use longhand padding-top/padding-bottom only, never the
+   `padding` shorthand. A shorthand here resets left/right to 0 and wins over
+   .wrap's `padding: 0 28px` (same specificity, later in source order),
+   zeroing the side inset for the entire hero block. Masked on desktop by
+   .wrap's max-width centering (a visible gutter hides it); fully exposed on
+   mobile, where the viewport is already narrower than that max-width --
+   real bug hit live 2026-09-09, content sat flush against the screen edge. */
+.hero { position: relative; padding-top: 168px; padding-bottom: 110px; max-width: 720px; }
+.hero > * { position: relative; z-index: 1; }
+.hero canvas { z-index: 0; }
+.hero-badge { width: 56px; height: 56px; border-radius: 50%; margin-bottom: 20px; box-shadow: 0 0 24px rgba(245,158,11,.28); }
+.hero h1 { font-family: var(--font-display); font-size: clamp(40px, 5.4vw, 74px); font-weight: 600; letter-spacing: -.02em; line-height: 1.06; margin: 20px 0 0; color: var(--text-strong); }
+.hero .lead { font-size: 20px; line-height: 1.55; max-width: 520px; margin-top: 24px; color: var(--vb-ink-700); }
+.hero .cta { display: flex; gap: 14px; margin-top: 34px; flex-wrap: wrap; }
+.mandala-panel {
+  position: relative; aspect-ratio: 1/1; border-radius: var(--radius-2xl);
+  background: radial-gradient(circle at 50% 42%, #0c1426, #020617 78%);
+  border: 1px solid #1e293b; box-shadow: var(--shadow-lg), 0 0 70px rgba(245,158,11,.16);
+  display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.mandala-panel::before {
+  content: ""; position: absolute; width: 82%; height: 82%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(245,158,11,.5), rgba(34,197,94,.22) 55%, rgba(245,158,11,0) 72%);
+  filter: blur(34px); animation: pulse 5.5s var(--ease-in-out) infinite;
+}
+@keyframes pulse { 0%,100% { transform: scale(.82); opacity: .55; } 50% { transform: scale(1.05); opacity: .95; } }
+.mandala-panel img { position: relative; width: 90%; animation: breathe 6s var(--ease-in-out) infinite; }
+@keyframes breathe { 0%,100% { transform: scale(.97); } 50% { transform: scale(1.03); } }
+.mandala-panel .cap { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: #94a3b8; }
+
+/* ---- generic section ---- */
+.sec { padding: 104px 0; }
+.sec-head { max-width: 620px; margin-bottom: 48px; }
+.sec-head.center { margin-inline: auto; text-align: center; }
+.sec h2 { font-size: clamp(28px, 3.6vw, 42px); font-weight: 800; letter-spacing: -.03em; line-height: 1.08; margin: 14px 0 0; }
+.sec p.sub { font-size: 18px; line-height: 1.55; margin-top: 16px; opacity: .82; }
+
+/* cards grid */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.card {
+  position: relative; border-radius: var(--radius-lg); padding: 30px 26px; overflow: hidden;
+  border: 1px solid var(--_cardbd, var(--vb-line)); background: var(--_cardbg, #fff);
+  transition: transform .25s var(--ease-out), box-shadow .25s, border-color .25s;
+}
+.card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: rgba(245,158,11,.4); }
+.card .accent { position: absolute; top: 0; left: 0; height: 3px; width: 30px; background: var(--vb-saffron-500); transition: width .25s var(--ease-out); }
+.card:hover .accent { width: 58px; }
+.card h3 { font-size: 18px; font-weight: 700; letter-spacing: -.01em; margin: 0; color: var(--_cardfg, var(--vb-ink-900)); }
+.card p { font-size: 14px; line-height: 1.55; margin: 10px 0 0; color: var(--_cardmut, var(--vb-ink-500)); }
+.card .num { font-family: var(--font-mono); font-size: 12px; color: var(--vb-saffron-600); font-weight: 700; letter-spacing: .08em; }
+
+/* dark theme helpers for sections */
+.on-dark-sec { --_cardbg: rgba(255,255,255,.04); --_cardbd: rgba(255,255,255,.1); --_cardfg: #fff; --_cardmut: #94a3b8; }
+
+/* metrics */
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 8px; }
+.metric .v { font-size: clamp(34px, 4.4vw, 52px); font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.metric .l { font-size: 13px; margin-top: 8px; opacity: .7; font-weight: 500; }
+
+/* philosophy band */
+.philo { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+.philo .deva { font-family: var(--font-deva); font-size: clamp(34px, 4.6vw, 56px); font-weight: 600; line-height: 1.75; color: var(--text-strong); letter-spacing: normal; }
+.philo p { font-size: 18px; line-height: 1.65; }
+
+/* CTA */
+.cta-band { text-align: center; padding: 128px 0; }
+.cta-band h2 { font-size: clamp(34px, 5vw, 60px); font-weight: 800; letter-spacing: -.035em; margin: 0; color: #fff; }
+.cta-band p { font-size: 19px; color: #fff; opacity: .78; margin: 18px auto 36px; max-width: 520px; }
+
+/* ---- Footer ---- */
+.site-footer { background: var(--vb-deep); color: var(--vb-mist-300); padding: 80px 0 38px; position: relative; z-index: 2; }
+.foot-top { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr 1.2fr; gap: 36px; }
+.site-footer .logo { height: 30px; margin-bottom: 16px; }
+.site-footer .blurb { font-size: 14px; line-height: 1.6; color: #94a3b8; max-width: 260px; }
+/* Contains a Devanagari run, so it uses the Noto stack with NO tracking --
+   letter-spacing detaches the matras, and Devanagari must never be set in a
+   mono or Latin face (DESIGN-SYSTEM.md §5). */
+.site-footer .kuta { margin-top: 16px; font-family: var(--font-deva); font-size: 13.4px; letter-spacing: normal; line-height: 1.75; color: var(--vb-saffron-400); }
+.fcol h4 { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #fff; margin: 0 0 16px; font-family: var(--font-mono); }
+.fcol ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.fcol a { font-size: 14px; color: #94a3b8; transition: color .2s; display: inline-flex; align-items: center; gap: 8px; }
+.fcol a:hover { color: var(--vb-saffron-400); }
+.fcol a svg { width: 15px; height: 15px; }
+.foot-bot { display: flex; justify-content: space-between; align-items: center; margin-top: 56px; padding-top: 26px; border-top: 1px solid rgba(255,255,255,.08); font-size: 13px; color: #64748b; flex-wrap: wrap; gap: 12px; }
+
+/* ---- FABs ---- */
+.fabs { position: fixed; right: 22px; bottom: 22px; z-index: 120; display: flex; flex-direction: column; gap: 12px; }
+.fab { position: relative; width: 52px; height: 52px; border-radius: 999px; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-lg); cursor: pointer; border: none; transition: transform .15s var(--ease-out); }
+.fab:hover { transform: scale(1.07); }
+.fab svg { width: 24px; height: 24px; }
+.fab.wa { background: #25d366; color: #fff; }
+.fab.voice { background: var(--vb-saffron-500); color: var(--vb-ink-900); }
+.fab .label { position: absolute; right: 62px; background: var(--vb-ink-900); color: #fff; font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.fab:hover .label { opacity: 1; }
+
+@media (max-width: 860px) {
+  .hero { grid-template-columns: 1fr; padding-top: 128px; }
+  .mandala-panel { max-width: 360px; }
+  .cards { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .philo { grid-template-columns: 1fr; gap: 28px; }
+  .foot-top { grid-template-columns: 1fr 1fr; }
+  .nav-links { display: none; }
+  /* .util covers Support/name/Dashboard/Logout/Account in the top bar --
+     each is duplicated in .mobile-nav-panel already, and left visible here
+     they overflow the row (logo + up to 4 util items don't fit an
+     unwrapped flex row under ~415px), pushing .mobile-menu-btn itself
+     off-screen for a signed-in user. Hide them, keep only the toggle. */
+  .nav-right .util { display: none; }
+  .mobile-menu-btn { display: flex; }
+  .mobile-nav-panel { display: flex; }
+}
+
+/* ==========================================================================
+   Reusable component classes used by inner pages / admin (warm Tailwind tokens)
+   ========================================================================== */
+@layer components {
+  .vb-nav {
+    background: var(--nav-bg);
+    backdrop-filter: saturate(140%) blur(14px);
+    -webkit-backdrop-filter: saturate(140%) blur(14px);
+  }
+  .vb-eyebrow {
+    @apply inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-[0.18em];
+  }
+  .vb-card {
+    @apply rounded-card border border-hairline bg-surface shadow-warm-sm transition-all duration-300;
+  }
+  .vb-card-interactive {
+    @apply hover:-translate-y-0.5 hover:border-saffron-500/35 hover:shadow-warm-md;
+  }
+  .vb-card-accent::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 28px;
+    background: var(--vb-saffron-500);
+    transition: width var(--ease-out) 300ms;
+  }
+  .vb-card-accent:hover::before { width: 56px; }
+}
+
+@layer utilities {
+  .vb-post-image-left {
+    @apply float-left mr-8 mb-6 rounded-card max-w-[45%] h-auto shadow-warm-md;
+    shape-outside: inset(0%);
+  }
+  .vb-post-image-right {
+    @apply float-right ml-8 mb-6 rounded-card max-w-[45%] h-auto shadow-warm-md;
+    shape-outside: inset(0%);
+  }
+  .vb-prose-clearfix::after {
+    content: "";
+    display: table;
+    clear: both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; }
+  .ambient .blob { transition: background-color .7s, opacity .7s; }
+  .mandala-panel::before, .mandala-panel img { animation: none; }
+}

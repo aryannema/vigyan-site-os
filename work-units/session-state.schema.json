@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Site Session State",
+  "type": "object",
+  "required": [
+    "version",
+    "updated_at_ist",
+    "project",
+    "status",
+    "source_of_truth",
+    "active_focus"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "updated_at_ist": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "source_of_truth": {
+      "type": "object"
+    },
+    "active_focus": {
+      "type": "string"
+    },
+    "current_state": {
+      "type": "object"
+    },
+    "pending_changes": {
+      "type": "array"
+    },
+    "validation": {
+      "type": "array"
+    },
+    "handoff_for_claude": {
+      "type": "array"
+    },
+    "decisions": {
+      "type": "array"
+    }
+  },
+  "additionalProperties": true
+}
+

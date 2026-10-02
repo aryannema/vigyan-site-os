@@ -1,0 +1,19 @@
+{
+  "version": "1",
+  "updated_at_ist": "2026-10-02T00:00:00+05:30",
+  "project": "your-site",
+  "status": "fresh template — run docs/SETUP.md phase 1",
+  "source_of_truth": {
+    "setup": "docs/SETUP.md",
+    "agent_rules": "AGENTS.md",
+    "env": "env.manifest.json"
+  },
+  "active_focus": "Initial setup: pnpm bootstrap, migrations, site-bootstrap skill for identity and brand",
+  "current_state": {},
+  "pending_changes": [],
+  "validation": [],
+  "handoff_for_claude": [
+    "Read docs/SETUP.md. Phase 1 is done by a person; offer to run pnpm bootstrap and the site-bootstrap skill."
+  ],
+  "decisions": []
+}

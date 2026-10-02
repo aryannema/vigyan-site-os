@@ -1,15 +1,11 @@
 # Contributing
 
-Thanks for looking. This project is early, and the most useful contributions right now are
-the unglamorous ones: closing the auth gap, fixing what [BLOCKERS.md](BLOCKERS.md) already
-admits is broken, and hardening the database layer.
+Thanks for looking. The most useful contributions are the unglamorous ones: hardening
+the database layer, tests that prove a guarantee, and docs that make setup shorter.
 
 ## Before you start
 
-Read [BLOCKERS.md](BLOCKERS.md). It is an append-only log of known problems, written by
-whoever hit them. §3 (no auth layer) is the big one.
-
-If you are planning something substantial, open an issue first. It is a short conversation
+Read [docs/SETUP.md](docs/SETUP.md) and `AGENTS.md`. If you are planning something substantial, open an issue first. It is a short conversation
 that saves a long PR.
 
 ## Licence and contributions
@@ -36,9 +32,8 @@ git commit -s -m "your message"
 
 ```bash
 pnpm install
-cp .env.example .env.local     # fill it in — see SETUP.md
-psql "$DATABASE_URL" -f supabase/migrations/000_local_auth_stub.sql
-# ...apply 001 through 009 in order
+pnpm bootstrap --host local --supabase cloud   # see docs/SETUP.md
+# apply supabase/migrations/* in order, then supabase/seed/01_required.sql and 02_defaults.sql
 pnpm dev
 ```
 
@@ -62,8 +57,8 @@ anything else.
 - **A capability that only the UI enforces is not enforced.** If a check can be bypassed by
   reaching the table through `psql`, PostgREST, or a screen that forgot, it belongs in a
   policy or a trigger.
-- **Prove it.** `tests/permission-matrix.test.ts` and `tests/adversarial-findings.test.ts`
-  exist to make a revoked capability actually revoked. A schema PR should add a case that
+- **Prove it.** The database tests (`pnpm test:db`) exist to make a revoked capability
+  actually revoked. A schema PR should add a case that
   fails without your change.
 
 ## Reporting a vulnerability

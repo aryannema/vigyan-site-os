@@ -36,7 +36,7 @@ const REQUIRED = new Set(['role_capabilities', 'invoice_series', 'encryption_key
 /** Starting values, each reachable from an admin screen. */
 const DEFAULTS = new Set([
   'app_config', 'feature_flags', 'ai_provider_config',
-  'payment_gateway_config', 'social_links',
+  'payment_gateway_config', 'social_links', 'nav_items',
 ]);
 
 /**

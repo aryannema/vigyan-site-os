@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "site": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "exec npx -y mcp-remote \"https://www.example.com/api/mcp\" --header \"Authorization:Bearer $SITE_MCP_KEY\" --header \"X-Caller-Label:$MCP_CALLER_LABEL\""
+      ]
+    },
+    "cloudflare-api": {
+      "serverUrl": "https://mcp.cloudflare.com/mcp"
+    },
+    "cloudflare-docs": {
+      "serverUrl": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "github": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "exec npx -y mcp-remote \"https://api.githubcopilot.com/mcp/\" --header \"Authorization:Bearer $GITHUB_PERSONAL_ACCESS_TOKEN\""
+      ]
+    }
+  }
+}

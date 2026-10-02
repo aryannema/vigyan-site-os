@@ -1,0 +1,9 @@
+# Vercel builds fresh from source -- these local build outputs must never be
+# uploaded. .next-stable in particular is the local-only build for the
+# separate stable WhatsApp-serving process (site-prod.service on
+# dev-box, see your infrastructure runbook
+# section 6) -- it has no meaning on Vercel and was bloating deploy uploads
+# past the 100MB single-file limit.
+.next/
+.next-stable/
+node_modules/

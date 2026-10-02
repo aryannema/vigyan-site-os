@@ -33,17 +33,21 @@ bank account or an API key, stop — that is the failure this separation exists 
 
 ## Why env is its own tier
 
-Three values cannot live in the database, because they are what you need in order to *reach*
-the database:
+Some values cannot live in the database, because they are what you need in order to *reach*
+or *decrypt* it. **`env.manifest.json` is the authority** — its `bootstrap` and `public`
+tiers are the platform env, and `pnpm env:check` fails if code reads a name it does not
+describe. Do not keep a separate list in this skill. Today that is:
 
-- `DATABASE_URL`
-- `CONFIG_ENCRYPTION_KEY_CURRENT` (and any `_V2` during rotation) — without it `app_secrets`
-  is undecryptable ciphertext
-- `NEXT_PUBLIC_SITE_URL`
+- `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` — reaching the database
+- `CONFIG_ENCRYPTION_KEY` (the key itself; `_CURRENT` is only the version number, `_V2`
+  only during rotation) — without it `app_secrets` is undecryptable ciphertext
+- `ACCOUNT_DELETION_ENCRYPTION_KEY`, `OTP_HASH_SECRET` — read before any DB lookup
+- `public` tier (`NEXT_PUBLIC_GA4_ID`, optional `NEXT_PUBLIC_SITE_URL`) — baked in at build
 
 Everything else that looks like an env var should be asked for here and stored encrypted in
-`app_secrets`, where it is rotatable from a screen and auditable. The WhatsApp, Notion,
-Resend, GA4 and local-AI credentials already work this way.
+`app_secrets` (tier `secret`, `/admin/settings/secrets`) or `app_config` (tier `config`,
+`/admin/settings`), where it is rotatable from a screen and auditable.
 
 **These differ by host, which is the whole reason they are separable:**
 
@@ -52,7 +56,7 @@ Resend, GA4 and local-AI credentials already work this way.
 | `DATABASE_URL` | internal Docker hostname, direct connection | pooled connection string |
 | `NEXT_PUBLIC_SITE_URL` | your domain behind Cloudflare | `VERCEL_URL` on previews, domain in prod |
 | Cron | system cron or a Coolify scheduled task | Vercel Cron, which needs `CRON_SECRET` |
-| Secrets UI | Coolify environment variables | Project → Settings → Environment Variables |
+| How values get there | `pnpm secrets sync coolify --env prod --apply` | `pnpm secrets sync vercel --env prod --apply` |
 
 A value that changes per host must never be a committed seed row: it would be correct on
 exactly one machine and silently wrong everywhere else.
@@ -97,9 +101,24 @@ so re-running is safe.
 **`brand.config.ts`** — gitignored. Palette, fonts, logo, tagline, voice, feeding CSS custom
 properties so one file re-skins the whole site.
 
-**A checklist, printed not written** — every value that must go into the host's own env or
-secrets UI, grouped by where it goes. Do not write these to a file; a file of secrets is the
-thing this whole structure exists to avoid.
+**Run `pnpm bootstrap`** once the hosts/accounts exist:
+`pnpm bootstrap --host coolify|vercel|aws|local --supabase cloud|coolify [--project-ref REF | --service UUID]`.
+It generates what is generatable (encryption keys, OTP/cron secrets), fetches what a
+provider can return (Supabase cloud via `supabase` CLI; self-hosted Supabase via the Coolify
+API with a `read:sensitive` token), and asks — hidden — for the rest with the exact place to
+find each. Run by an agent (no terminal) it asks nothing: it reports what is still missing
+with the same guidance and exits 3 — relay that to the operator, who runs it in a terminal.
+Never ask the operator to paste a value into chat.
+
+**The encrypted vault** — `secrets/prod.sops.env`, never a plaintext file. Run
+`pnpm secrets init` (age key + recipient), then `pnpm secrets edit --env prod` and fill the
+`bootstrap`/`public` names; `pnpm secrets check --env prod` must report nothing missing.
+Push with `pnpm secrets sync coolify|vercel --env prod --apply`. The vault is ciphertext and
+safe to commit; the age key in `~/.config/sops/age/keys.txt` never is — back it up offline.
+A *plaintext* file of secrets is still the thing this whole structure exists to avoid.
+
+**A checklist, printed not written** — the `secret`/`config` values to enter in
+`/admin/settings/secrets` and `/admin/settings` after first sign-in, grouped by screen.
 
 ## Verify before declaring done
 

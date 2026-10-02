@@ -1,0 +1,53 @@
+/* Placeholder theme — replace via the site-bootstrap skill.
+   Variable names are fixed (the app and tailwind.config.ts read them); only the
+   values are yours. "saffron" = primary scale, "green" = accent scale.
+   Keep the two scales identical in tailwind.config.ts (`pnpm brand:check`). */
+:root {
+  /* Brand */
+  --vb-saffron-300:#7dd3fc; --vb-saffron-400:#38bdf8; --vb-saffron-500:#0ea5e9;
+  --vb-saffron-600:#0284c7; --vb-saffron-700:#0369a1;
+  --vb-green-500:#8b5cf6; --vb-green-600:#7c3aed; --vb-green-700:#6d28d9;
+
+  /* Cool canvas — the primary ground */
+  --vb-paper:#f8fafc; --vb-paper-2:#f1f5f9; --vb-paper-3:#e2e8f0; --vb-surface:#ffffff;
+
+  /* Slate ink */
+  --vb-ink-900:#0f172a; --vb-ink-700:#334155; --vb-ink-500:#64748b; --vb-ink-300:#94a3b8;
+
+  /* Deep surfaces */
+  --vb-deep:#020617; --vb-deep-surface:#0f172a; --vb-deep-line:#1e293b;
+  --vb-mist-200:#e2e8f0; --vb-mist-300:#cbd5e1;
+
+  /* Hairlines */
+  --vb-line:rgba(15,23,42,0.12); --vb-line-strong:rgba(15,23,42,0.22);
+  --vb-line-faint:rgba(15,23,42,0.06); --vb-line-on-deep:rgba(255,255,255,0.10);
+
+  /* Semantic */
+  --bg:var(--vb-paper); --bg-alt:var(--vb-paper-2); --surface-card:var(--vb-surface);
+  --text-strong:var(--vb-ink-900); --text-body:var(--vb-ink-700); --text-muted:var(--vb-ink-500);
+  --text-on-deep:var(--vb-mist-300);
+  --primary:var(--vb-saffron-500); --primary-ink:var(--vb-saffron-700);
+  --accent:var(--vb-green-700); --accent-bright:var(--vb-green-500);
+  --on-primary:var(--vb-ink-900); --border:var(--vb-line); --focus-ring:var(--vb-saffron-500);
+
+  /* Strings — mirror src/lib/brand.ts */
+  --vb-tagline:"Your tagline goes here.";
+  --vb-label:"YOUR LABEL · GOES · HERE";
+
+  /* Type */
+  --font-display:Newsreader, Georgia, serif;
+  --font-body:'Public Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-logotype:'Public Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:'JetBrains Mono', Menlo, Consolas, monospace;
+  --font-deva:'Noto Sans Devanagari', Mangal, sans-serif;
+
+  /* Radius & rhythm */
+  --radius-sm:8px; --radius-md:12px; --radius-lg:20px; --radius-xl:28px;
+  --container:1200px; --prose:760px; --block:80px;
+  --ease:cubic-bezier(0.16,1,0.3,1);
+}
+
+/* Deep surface — apply only where a section is deliberately dark. */
+.vb-deep { --bg:var(--vb-deep); --surface-card:var(--vb-deep-surface);
+  --text-strong:var(--vb-paper); --text-body:var(--vb-mist-300);
+  --accent:var(--vb-green-500); --border:var(--vb-line-on-deep); }
